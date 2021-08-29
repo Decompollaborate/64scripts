@@ -53,16 +53,19 @@ def parseMapFile(mapPath: str) -> List[File]:
                     currentFileVram = int(entryMatch["vram"], 16)
                     if currentFileSize > 0:
                         inFile = True
-                        #filesList.append({"name": currentFileName, "size": currentFileSize, "vram": currentFileVram, "functions": list()})
                         filesList.append(File(currentFileName, currentFileVram, currentFileSize, list()))
-                        # print(currentFileName, hex(currentFileSize), hex(currentFileVram))
+
+    resultFileList: List[File] = list()
 
     for file in filesList:
         accummulatedSize = 0
         funcCount = len(file.functions)
+
+        # Filter out files with no functions
         if funcCount == 0:
             continue
 
+        # Calculate size of each function
         for index in range(funcCount-1):
             func = file.functions[index]
             nextFunc = file.functions[index+1]
@@ -71,25 +74,54 @@ def parseMapFile(mapPath: str) -> List[File]:
             accummulatedSize += size
 
             file.functions[index] = Function(func.name, func.vram, size)
-            #print(file.functions[index])
 
+        # Calculate size of last function of the file
         func = file.functions[funcCount-1]
         size = file.size - accummulatedSize
         file.functions[funcCount-1] = Function(func.name, func.vram, size)
 
+        resultFileList.append(file)
+
+    return resultFileList
+
+
+def mixFolders(filesList: List[File]) -> List[File]:
+    newFileList: List[File] = list()
+
+    auxDict = collections.OrderedDict()
+
+    # Put files in the same folder together
     for file in filesList:
-        funcCount = len(file.functions)
-        for index in range(funcCount):
-            func = file.functions[index]
-            #print(func)
+        path = "/".join(file.name.split("/")[:-1])
+        if path not in auxDict:
+            auxDict[path] = list()
+        auxDict[path].append(file)
 
-    return filesList
+    # Pretend files in the same folder are one huge file
+    for folderPath in auxDict:
+        filesInFolder = auxDict[folderPath]
+        firstFile = filesInFolder[0]
 
-def printCsv(filesList: List[File]):
-    print("VRAM,File,Num functions,Max size,Total size,Average size")
+        vram = firstFile.vram
+        size = 0
+
+        functions = list()
+        for file in filesInFolder:
+            size += file.size
+            for func in file.functions:
+                functions.append(func)
+
+        newFileList.append(File(folderPath, vram, size, functions))
+
+    return newFileList
+
+
+def printCsv(filesList: List[File], printVram: bool = True):
+    if printVram:
+        print("VRAM,", end="")
+    print("File,Num functions,Max size,Total size,Average size")
 
     for file in filesList:
-        #print(file)
         name = file.name
         vram = file.vram
         size = file.size
@@ -98,13 +130,17 @@ def printCsv(filesList: List[File]):
         if funcCount == 0:
             continue
 
+        # Calculate stats
         maxSize = 0
+        averageSize = size/funcCount
         for func in file.functions:
             funcSize = func.size
             if funcSize > maxSize:
                 maxSize = funcSize
 
-        print(f"{vram:08X},{name},{funcCount},{maxSize},{size},{size/funcCount:0.2f}")
+        if printVram:
+            print(f"{vram:08X},", end="")
+        print(f"{name},{funcCount},{maxSize},{size},{averageSize:0.2f}")
     return
 
 def main():
@@ -116,14 +152,18 @@ def main():
     parser = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("mapfile", help="Path to a map file.")
     # parser.add_argument("--non-matching", help="Collect data of the non-matching actors instead.", action="store_true")
-    #parser.add_argument("--function-lines", help="Prints the size of every function instead of a summary.", action="store_true")
-    #parser.add_argument("--ignore", help="Path to a file containing actor's names. The data of actors in this list will be ignored.")
-    #parser.add_argument("--include-only", help="Path to a file containing actor's names. Only data of actors in this list will be printed.")
+    # parser.add_argument("--function-lines", help="Prints the size of every function instead of a summary.", action="store_true")
+    # parser.add_argument("--ignore", help="Path to a file containing actor's names. The data of actors in this list will be ignored.")
+    # parser.add_argument("--include-only", help="Path to a file containing actor's names. Only data of actors in this list will be printed.")
+    parser.add_argument("--same-folder", help="Mix files in the same folder.", action="store_true")
     args = parser.parse_args()
 
     filesList = parseMapFile(args.mapfile)
 
-    printCsv(filesList)
+    if args.same_folder:
+        filesList = mixFolders(filesList)
+
+    printCsv(filesList, not args.same_folder)
 
 if __name__ == "__main__":
     main()
