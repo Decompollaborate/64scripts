@@ -7,8 +7,8 @@ import re
 import collections
 from typing import List
 
-regex_fileDataEntry = re.compile(r"(?P<vram>0x[^\s]+)\s+(?P<size>0x[^\s]+)\s+(?P<name>[^\s]+)$")
-regex_functionEntry = re.compile(r"(?P<vram>0x[^\s]+)\s+(?P<name>[^\s]+)$")
+regex_fileDataEntry = re.compile(r"^\s+(?P<section>[^\s]+)\s+(?P<vram>0x[^\s]+)\s+(?P<size>0x[^\s]+)\s+(?P<name>[^\s]+)$")
+regex_functionEntry = re.compile(r"^\s+(?P<vram>0x[^\s]+)\s+(?P<name>[^\s]+)$")
 
 File = collections.namedtuple("File", ["name", "vram", "size", "functions"])
 Function = collections.namedtuple("Function", ["name", "vram", "size"])
@@ -105,8 +105,7 @@ def printCsv(filesList: List[File]):
                 maxSize = funcSize
 
         print(f"{vram:08X},{name},{funcCount},{maxSize},{size},{size/funcCount:0.2f}")
-
-
+    return
 
 def main():
     description = "Produces a csv summarizing the files sizes by parsing a map file."
