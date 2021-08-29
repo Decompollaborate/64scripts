@@ -91,7 +91,6 @@ def count_build():
             total_size = 0
             max_size = -1
             ovl_path = os.path.join(root, actor_dir)
-            num_funcs = 0    
 
             actor_funcs = {}
 
@@ -105,28 +104,26 @@ def count_build():
 
                 file_path = os.path.join(ovl_path, f_name)
                 funcs = count_built_funcs_and_instructions(file_path)
-                
-                if len(funcs) > 0:
-                    # print(funcs)
-                    num_funcs = len(funcs)
-                    # round up the file size to a multiple of four.
-                    total_size = math.ceil(sum(funcs.values())/4)*4
-                    max_size = max(funcs.values())
-                    # merges both dictionaries
-                    actor_funcs = {**actor_funcs, **funcs}
-                    
+
+                num_funcs = len(funcs)
                 if num_funcs == 0:
                     continue
 
+                # round up the file size to a multiple of four.
+                total_size = math.ceil(sum(funcs.values())/4)*4
+                max_size = max(funcs.values())
+                # merges both dictionaries
+                actor_funcs = {**actor_funcs, **funcs}
+
                 # Get directory relative to starting directory
                 rel_dir = os.path.relpath(ovl_path, build_dir)
+                simple_path_file = os.path.join(rel_dir, os.path.splitext(f_name)[0])
 
-                overlays[os.path.join(rel_dir, os.path.splitext(f_name)[0])] = {
+                overlays[simple_path_file] = {
                     "summary": (num_funcs, max_size, total_size, 
                         total_size / num_funcs),
                     "funcs": actor_funcs
                 }
-
 
     return overlays
 
