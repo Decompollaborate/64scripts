@@ -48,7 +48,7 @@ def count_non_matching():
                     total_size / num_files),
                 "funcs": actor_funcs
             }
-    
+
     return overlays
 
 
@@ -59,7 +59,7 @@ def count_built_funcs_and_instructions(f_path):
     f_lines = ""
     with open(f_path) as f:
         f_lines = f.readlines()
-    
+
     current = ""
     funcs = {}
     for line in f_lines:
