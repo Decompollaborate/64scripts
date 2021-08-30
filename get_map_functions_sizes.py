@@ -34,7 +34,7 @@ def parseMapFile(mapPath: str) -> List[File]:
                 # Find function
                 if entryMatch is not None:
                     funcName = entryMatch["name"]
-                    funcVram = int(entryMatch["vram"], 16)
+                    funcVram = int(entryMatch["vram"], 16) // 4
 
                     # Filter out jump table's labels
                     labelMatch = regex_label.search(funcName)
@@ -53,7 +53,7 @@ def parseMapFile(mapPath: str) -> List[File]:
                 if entryMatch is not None:
                     name = "/".join(entryMatch["name"].split("/")[2:])
                     name = ".".join(name.split(".")[:-1])
-                    size = int(entryMatch["size"], 16)
+                    size = int(entryMatch["size"], 16) // 4
                     vram = int(entryMatch["vram"], 16)
 
                     if size > 0:
