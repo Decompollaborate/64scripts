@@ -9,6 +9,7 @@ from typing import List
 
 regex_fileDataEntry = re.compile(r"^\s+(?P<section>[^\s]+)\s+(?P<vram>0x[^\s]+)\s+(?P<size>0x[^\s]+)\s+(?P<name>[^\s]+)$")
 regex_functionEntry = re.compile(r"^\s+(?P<vram>0x[^\s]+)\s+(?P<name>[^\s]+)$")
+regex_label = re.compile(r"^(?P<name>L[0-9A-F]{8})$")
 
 File = collections.namedtuple("File", ["name", "vram", "size", "functions"])
 Function = collections.namedtuple("Function", ["name", "vram", "size"])
@@ -23,9 +24,6 @@ def parseMapFile(mapPath: str) -> List[File]:
     filesList: List[File] = list()
 
     inFile = False
-    currentFileName = ""
-    currentFileSize = 0
-    currentFileVram = 0
 
     mapLines = mapData.split("\n")
     for line in mapLines:
@@ -33,10 +31,15 @@ def parseMapFile(mapPath: str) -> List[File]:
             if line.startswith("                "):
                 entryMatch = regex_functionEntry.search(line)
 
+                # Find function
                 if entryMatch is not None:
                     funcName = entryMatch["name"]
                     funcVram = int(entryMatch["vram"], 16)
-                    filesList[-1].functions.append(Function(funcName, funcVram, -1))
+
+                    # Filter out jump table's labels
+                    labelMatch = regex_label.search(funcName)
+                    if labelMatch is None:
+                        filesList[-1].functions.append(Function(funcName, funcVram, -1))
                     # print(hex(funcVram), funcName)
 
             else:
@@ -46,14 +49,16 @@ def parseMapFile(mapPath: str) -> List[File]:
                 inFile = False
                 entryMatch = regex_fileDataEntry.search(line)
 
+                # Find file
                 if entryMatch is not None:
-                    currentFileName = "/".join(entryMatch["name"].split("/")[2:])
-                    currentFileName = ".".join(currentFileName.split(".")[:-1])
-                    currentFileSize = int(entryMatch["size"], 16)
-                    currentFileVram = int(entryMatch["vram"], 16)
-                    if currentFileSize > 0:
+                    name = "/".join(entryMatch["name"].split("/")[2:])
+                    name = ".".join(name.split(".")[:-1])
+                    size = int(entryMatch["size"], 16)
+                    vram = int(entryMatch["vram"], 16)
+
+                    if size > 0:
                         inFile = True
-                        filesList.append(File(currentFileName, currentFileVram, currentFileSize, list()))
+                        filesList.append(File(name, vram, size, list()))
 
     resultFileList: List[File] = list()
 
