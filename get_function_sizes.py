@@ -195,11 +195,11 @@ Flags can be mixed to produce a customized result:
     parser.add_argument("--include-only", help="Path to a file containing actor's names. Only data of actors in this list will be printed.")
     args = parser.parse_args()
 
-    if args.d:
+    if args.directory:
         global asm_dir
         global build_dir
-        asm_dir = asm_dir.replace(root_dir, args.d)
-        build_dir = build_dir.replace(root_dir, args.d)
+        asm_dir = asm_dir.replace(root_dir, args.directory)
+        build_dir = build_dir.replace(root_dir, args.directory)
 
     if args.non_matching:
         overlays = count_non_matching()
