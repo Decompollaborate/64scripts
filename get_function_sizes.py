@@ -188,12 +188,18 @@ Flags can be mixed to produce a customized result:
     ./tools/get_actor_sizes.py --non-matching --function-lines --include-only my_reserved.csv > my_status.csv
     """
     parser = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("-d", help="Directory to examine.", default="src/overlays/actors")
+    parser.add_argument("-d", "--directory", help="Directory to examine.", default="src/overlays/actors")
     parser.add_argument("--non-matching", help="Collect data of the non-matching actors instead.", action="store_true")
     parser.add_argument("--function-lines", help="Prints the size of every function instead of a summary.", action="store_true")
     parser.add_argument("--ignore", help="Path to a file containing actor's names. The data of actors in this list will be ignored.")
     parser.add_argument("--include-only", help="Path to a file containing actor's names. Only data of actors in this list will be printed.")
     args = parser.parse_args()
+
+    if args.d:
+        global asm_dir
+        global build_dir
+        asm_dir = asm_dir.replace(root_dir, args.d)
+        build_dir = build_dir.replace(root_dir, args.d)
 
     if args.non_matching:
         overlays = count_non_matching()
