@@ -59,8 +59,15 @@ def parseMapFile(mapPath: str):
 
                 # Find file
                 if entryMatch is not None:
-                    name = "/".join(entryMatch["name"].split("/")[2:])
-                    name = ".".join(name.split(".")[:-1])
+                    name = "/".join(entryMatch["name"].split("/")[1:])
+
+                    # mapfile only contains .o files, so just strip the last character to replace it
+                    # we assume all the .c files are in the src folder, and all others are .s (true for OoT/MM)
+                    if name.split("/")[0] == "src":
+                        name = name[:-1] + "c"
+                    else:
+                        name = name[:-1] + "s"
+
                     size = int(entryMatch["size"], 16)
                     vram = int(entryMatch["vram"], 16)
 
@@ -92,6 +99,14 @@ def compareMapFiles(mapFileBuild: str, mapFileExpected: str):
     print("Build mapfile:    " + mapFileBuild, file=os.sys.stderr)
     print("Expected mapfile: " + mapFileExpected, file=os.sys.stderr)
     print("", file=os.sys.stderr)
+
+    if not os.path.exists(mapFileBuild):
+        print(f"{colorama.Fore.LIGHTRED_EX}error{colorama.Fore.RESET}: mapfile not found at {mapFileBuild}. Did you enter the correct path?", file=os.sys.stderr)
+        exit(1)
+
+    if not os.path.exists(mapFileExpected):
+        print(f"{colorama.Fore.LIGHTRED_EX}error{colorama.Fore.RESET}: expected mapfile not found at {mapFileExpected}. Is 'expected' missing or in a different folder?", file=os.sys.stderr)
+        exit(1)
 
     buildMap = parseMapFile(mapFileBuild)
     expectedMap = parseMapFile(mapFileExpected)
@@ -146,24 +161,29 @@ def printCsv(badFiles, missingFiles, comparedDict, printAll = True):
 
 
 def main():
-    description = "Check that globally visible bss has not been reordered"
+    description = "Check that globally visible bss has not been reordered."
     # TODO
     epilog = """\
-        N.B. Since this script reads the map files, it can only see globally visible bss: in-function static bss must be examined with other tools.
+    N.B. Since this script reads the map files, it can only see globally visible bss; in-function static bss must be examined with other tools.
     """
 
     parser = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
-    parser.add_argument("mapfile", help="Path to a map file.")
-    parser.add_argument("mapFileExpected", help="Path to the expected map file.")
+    parser.add_argument("mapFile", help="Path to a map file.")
+    parser.add_argument("mapFileExpected", help="Path to the expected map file. Optional, default is 'expected/mapFile'.", nargs="?", default="")
     parser.add_argument("-a", "--print-all", help="Print all bss, not just non-matching.", action="store_true")
     parser.add_argument("-n", "--no-fun-allowed", help="Remove amusing messages.", action="store_true")
     args = parser.parse_args()
 
-    badFiles, missingFiles, comparedDict = compareMapFiles(args.mapfile, args.mapFileExpected)
+    if args.mapFileExpected == "":
+        args.mapFileExpected = os.path.join("expected", args.mapFile)
+
+    badFiles, missingFiles, comparedDict = compareMapFiles(args.mapFile, args.mapFileExpected)
     printCsv(badFiles, missingFiles, comparedDict, args.print_all)
 
-    if len(badFiles) != 0:
+    if len(badFiles) + len(missingFiles) != 0:
         print("", file=os.sys.stderr)
+
+    if len(badFiles) != 0:
         print(colorama.Fore.RED + "  BAD" + colorama.Style.RESET_ALL)
 
         for file in badFiles:
@@ -178,7 +198,6 @@ def main():
             print("", file=os.sys.stderr)
 
     if len(missingFiles) != 0:
-        print("", file=os.sys.stderr)
         print(colorama.Fore.YELLOW + "  MISSING" + colorama.Style.RESET_ALL)
 
         for file in missingFiles:
@@ -193,7 +212,8 @@ def main():
 
     if len(badFiles) + len(missingFiles) != 0:
         return 1
-
+    
+    print("", file=os.sys.stderr)
     print(colorama.Fore.GREEN + "  GOOD" + colorama.Style.RESET_ALL, file=os.sys.stderr)
 
     if args.no_fun_allowed:
