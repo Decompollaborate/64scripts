@@ -94,7 +94,8 @@ void SwapBytes16(uint16_t* data, int length) {
 void SwapBytes32(uint32_t* data, int length) {
     int i;
     for (i = 0; i < length / 4; i++) {
-        data[i] = ((data[i] & 0xFF) << 0x18) | ((data[i] & 0xFF00) << 0x8) | ((data[i] & 0xFF0000) >> 0x8) | (data[i] >> 0x18);
+        data[i] = ((data[i] & 0xFF) << 0x18) | ((data[i] & 0xFF00) << 0x8) | ((data[i] & 0xFF0000) >> 0x8) |
+                  (data[i] >> 0x18);
     }
 }
 
@@ -118,11 +119,9 @@ char* FindDescriptionFromChar(char ch, CharDescription* charDescription) {
 }
 
 struct option longOptions[] = {
-    { "csv", no_argument, NULL, 'c' },
-    { "little-endian", no_argument, NULL, 'n' },
-    { "byteswapped", no_argument, NULL, 'v' },
-    { "help", no_argument, NULL, 'h' },
-    { 0 },
+    { "csv", no_argument, NULL, 'c' },   { "little-endian", no_argument, NULL, 'n' },
+    { "utf-8", no_argument, NULL, 'u' }, { "byteswapped", no_argument, NULL, 'v' },
+    { "help", no_argument, NULL, 'h' },  { 0 },
 };
 
 typedef enum {
@@ -134,6 +133,7 @@ typedef enum {
 int main(int argc, char** argv) {
     int opt;
     bool csv = false;
+    bool utf8 = false;
     FILE* romFile;
     N64Header header;
     size_t romSize;
@@ -146,7 +146,7 @@ int main(int argc, char** argv) {
 
     while (true) {
         int optionIndex = 0;
-        if ((opt = getopt_long(argc, argv, "cnvh", longOptions, &optionIndex)) == EOF) {
+        if ((opt = getopt_long(argc, argv, "cnuvh", longOptions, &optionIndex)) == EOF) {
             break;
         }
 
@@ -154,19 +154,30 @@ int main(int argc, char** argv) {
             case 'c':
                 csv = true;
                 break;
+
             case 'n':
                 endianness = BAD_ENDIAN;
                 break;
+
+            case 'u':
+                utf8 = true;
+                break;
+
             case 'v':
                 endianness = UGLY_ENDIAN;
                 break;
+
             case 'h':
                 puts("Reads an N64 ROM header and prints the information it contains.");
                 puts("Options:\n"
-                       "  -c, --csv              Output in csv format.\n"
-                       "  -n, --little-endian    Read input as little-endian.\n"
-                       "  -v, --byteswapped      Read input as byteswapped.\n");
+                     "  -c, --csv              Output in csv format.\n"
+                     "  -n, --little-endian    Read input as little-endian.\n"
+                     "  -u, --utf-8            Convert image name to UTF-8.\n"
+                     "  -v, --byteswapped      Read input as byteswapped.\n");
                 return 1;
+
+            default:
+                fprintf(stderr, "Getopt returned character code: 0x%X", opt);
         }
     }
 
@@ -174,7 +185,6 @@ int main(int argc, char** argv) {
     fread(&header, N64_HEADER_SIZE, 1, romFile);
     fseek(romFile, 0, SEEK_END);
     romSize = ftell(romFile);
-
 
     switch (endianness) {
         case GOOD_ENDIAN:
@@ -191,43 +201,41 @@ int main(int argc, char** argv) {
     {
         char imageNameCopy[21] = { 0 };
         char imageNameUTF8[100] = { 0 };
+        char* imageName = imageNameCopy;
 
         /* Copy the name to make sure it ends in '\0' */
         memcpy(imageNameCopy, header.imageName, sizeof(header.imageName));
-        /* Convert to UTF-8 for printing */
-        {
+
+        if (utf8) {
             iconv_t conv = iconv_open("UTF-8//TRANSLIT", "SHIFT-JIS");
             size_t inBytes = sizeof(imageNameCopy);
             size_t outBytes = sizeof(imageNameUTF8);
             char* inPtr = imageNameCopy;
             char* outPtr = imageNameUTF8;
 
-            memset(imageNameUTF8, '\0', sizeof(imageNameUTF8));
             if (conv == (iconv_t)-1) {
                 fprintf(stderr, "Conversion invalid\n");
                 return 1;
             }
 
-            if(iconv(conv, &inPtr, &inBytes, &outPtr, &outBytes) == (size_t)-1) {
+            if (iconv(conv, &inPtr, &inBytes, &outPtr, &outBytes) == (size_t)-1) {
                 fprintf(stderr, "Conversion failed.\n");
                 return 1;
             }
 
-            printf("Original name: %s\n", imageNameCopy);
-            printf("Converted name: %s\n", imageNameUTF8);
+            imageName = imageNameUTF8;
 
             iconv_close(conv);
         }
 
-
         if (!csv) {
             printf("File: %s\n", argv[optind]);
             printf("ROM size: 0x%zX bytes (%zd MB)\n\n", romSize, romSize >> 20);
-            
+
             printf("entrypoint:       %08X\n", header.entrypoint);
             printf("Libultra version: %c\n", header.revision & 0xFF);
             printf("CRC:              %08X %08X\n", header.checksum1, header.checksum2);
-            printf("Image name:       \"%s\"\n", imageNameCopy);
+            printf("Image name:       \"%s\"\n", imageName);
             printf("Media format:     %c: %s\n", header.mediaFormat,
                    FindDescriptionFromChar(header.mediaFormat, mediaCharDescription));
             printf("Cartridge Id:     %c%c\n", header.cartridgeId[0], header.cartridgeId[1]);
@@ -235,19 +243,18 @@ int main(int argc, char** argv) {
                    FindDescriptionFromChar(header.countryCode, countryCharDescription));
             printf("Version mask:     0x%X\n", header.version);
         } else {
-            
+
             printf("%s,", argv[optind]);
             printf("0x%zX,", romSize);
-            
+
             printf("%08X,", header.entrypoint);
             printf("%c,", header.revision & 0xFF);
             printf("%08X %08X,", header.checksum1, header.checksum2);
-            printf("\"%s\",", imageNameCopy);
+            printf("\"%s\",", imageName);
             printf("%c,", header.mediaFormat);
             printf("%c%c,", header.cartridgeId[0], header.cartridgeId[1]);
             printf("%c,", header.countryCode);
             printf("0x%X\n", header.version);
-
         }
     }
 
