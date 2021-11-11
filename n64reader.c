@@ -121,9 +121,11 @@ char* FindDescriptionFromChar(char ch, CharDescription* charDescription) {
 struct option longOptions[] = {
     { "csv", no_argument, NULL, 'c' },
     { "little-endian", no_argument, NULL, 'n' },
+    { "print-endian", no_argument, NULL, 'p' },
     { "separator", required_argument, NULL, 's' },
     { "utf-8", no_argument, NULL, 'u' },
     { "byteswapped", no_argument, NULL, 'v' },
+    { "big-endian", no_argument, NULL, 'z' },
     { "help", no_argument, NULL, 'h' },
     { 0 },
 };
@@ -132,12 +134,17 @@ typedef enum {
     GOOD_ENDIAN,
     BAD_ENDIAN,
     UGLY_ENDIAN,
+    UNKNOWN_ENDIAN,
 } Endianness;
+
+char* endiannessStrings[] = { "Big", "Little", "Middle", "Unknown" };
 
 int main(int argc, char** argv) {
     int opt;
     bool csv = false;
     bool utf8 = false;
+    bool endianSpecified = false;
+    bool printEndian = false;
     FILE* romFile;
     N64Header header;
     size_t romSize;
@@ -145,13 +152,14 @@ int main(int argc, char** argv) {
     char separator = ',';
 
     if (argc < 2) {
-        fprintf(stderr, "Please provide an N64 ROM file.\n");
+        fprintf(stderr, "%s -cu[n|v|z] -s SEP ROMFILE\n", argv[0]);
+        fprintf(stderr, "No ROM file provided. Exiting.\n");
         return 1;
     }
 
     while (true) {
         int optionIndex = 0;
-        if ((opt = getopt_long(argc, argv, "s:cnuvh", longOptions, &optionIndex)) == EOF) {
+        if ((opt = getopt_long(argc, argv, "s:cnpuvzh", longOptions, &optionIndex)) == EOF) {
             break;
         }
 
@@ -165,7 +173,12 @@ int main(int argc, char** argv) {
                 break;
 
             case 'n':
+                endianSpecified = true;
                 endianness = BAD_ENDIAN;
+                break;
+
+            case 'p':
+                printEndian = true;
                 break;
 
             case 'u':
@@ -173,18 +186,28 @@ int main(int argc, char** argv) {
                 break;
 
             case 'v':
+                endianSpecified = true;
                 endianness = UGLY_ENDIAN;
                 break;
 
+            case 'z':
+                endianSpecified = true;
+                endianness = GOOD_ENDIAN;
+                break;
+
             case 'h':
+                fprintf(stderr, "%s -cu[n|v|z] -s SEP ROMFILE\n", argv[0]);
                 puts("Reads an N64 ROM header and prints the information it contains.");
                 puts("Options:\n"
                      "  -s, --separator CHAR   Change the separator character used in CSV mode (default: ',')\n"
                      "\n"
                      "  -c, --csv              Output in csv format.\n"
                      "  -n, --little-endian    Read input as little-endian.\n"
+                     "  -p, --print-endian     Print endianness.\n"
                      "  -u, --utf-8            Convert image name to UTF-8.\n"
-                     "  -v, --byteswapped      Read input as byteswapped.\n");
+                     "  -v, --byteswapped      Read input as byteswapped.\n"
+                     "  -z, --big-endian       Read input as big-endian.\n"
+                     "  -h, --help             Display this message and exit.\n");
                 return 1;
 
             default:
@@ -197,8 +220,32 @@ int main(int argc, char** argv) {
     fseek(romFile, 0, SEEK_END);
     romSize = ftell(romFile);
 
+    /* Guess endianness from first byte */
+    if (!endianSpecified) {
+        switch (header.PIBSDDomain1Register[0]) {
+            case 0x80:
+                endianness = GOOD_ENDIAN;
+                break;
+
+            case 0x40:
+                endianness = BAD_ENDIAN;
+                break;
+
+            case 0x37:
+                endianness = UGLY_ENDIAN;
+                break;
+
+            default:
+                endianness = UNKNOWN_ENDIAN;
+                fprintf(stderr, "warning: unable to determine endianness from first byte of header: it is not one of "
+                                "0x80, 0x37, 0x40.\n  Recommend investigating the raw bytes with a hexdump.");
+                break;
+        }
+    }
+
     switch (endianness) {
         case GOOD_ENDIAN:
+        case UNKNOWN_ENDIAN:
             break;
         case BAD_ENDIAN:
             SwapBytes32((uint32_t*)&header, sizeof(header));
@@ -241,7 +288,11 @@ int main(int argc, char** argv) {
 
         if (!csv) {
             printf("File: %s\n", argv[optind]);
-            printf("ROM size: 0x%zX bytes (%zd MB)\n\n", romSize, romSize >> 20);
+            printf("ROM size: 0x%zX bytes (%zd MB)\n", romSize, romSize >> 20);
+            if (printEndian) {
+                printf("Endianness: %s\n", endiannessStrings[endianness]);
+            }
+            putchar('\n');
 
             printf("entrypoint:       %08X\n", header.entrypoint);
             printf("Libultra version: %c\n", header.revision & 0xFF);
@@ -259,6 +310,11 @@ int main(int argc, char** argv) {
             putchar(separator);
             printf("0x%zX", romSize);
             putchar(separator);
+            if (printEndian) {
+                printf("%s", endiannessStrings[endianness]);
+            }
+            putchar(separator);
+
             printf("%08X", header.entrypoint);
             putchar(separator);
             printf("%c", header.revision & 0xFF);
