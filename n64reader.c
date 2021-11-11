@@ -4,6 +4,7 @@
 #include <string.h>
 #include <endian.h>
 #include <getopt.h>
+#include <iconv.h>
 
 #define N64_HEADER_SIZE 0x40
 
@@ -189,8 +190,35 @@ int main(int argc, char** argv) {
     ReEndHeader(&header);
     {
         char imageNameCopy[21] = { 0 };
+        char imageNameUTF8[100] = { 0 };
+
         /* Copy the name to make sure it ends in '\0' */
         memcpy(imageNameCopy, header.imageName, sizeof(header.imageName));
+        /* Convert to UTF-8 for printing */
+        {
+            iconv_t conv = iconv_open("UTF-8//TRANSLIT", "SHIFT-JIS");
+            size_t inBytes = sizeof(imageNameCopy);
+            size_t outBytes = sizeof(imageNameUTF8);
+            char* inPtr = imageNameCopy;
+            char* outPtr = imageNameUTF8;
+
+            memset(imageNameUTF8, '\0', sizeof(imageNameUTF8));
+            if (conv == (iconv_t)-1) {
+                fprintf(stderr, "Conversion invalid\n");
+                return 1;
+            }
+
+            if(iconv(conv, &inPtr, &inBytes, &outPtr, &outBytes) == (size_t)-1) {
+                fprintf(stderr, "Conversion failed.\n");
+                return 1;
+            }
+
+            printf("Original name: %s\n", imageNameCopy);
+            printf("Converted name: %s\n", imageNameUTF8);
+
+            iconv_close(conv);
+        }
+
 
         if (!csv) {
             printf("File: %s\n", argv[optind]);
