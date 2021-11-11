@@ -6,11 +6,13 @@
 #include <getopt.h>
 #include <iconv.h>
 
+#include "crc32/crc32.h"
+
 #define N64_HEADER_SIZE 0x40
 
 typedef struct {
-    char ch;
-    char* description;
+    const char ch;
+    const char* description;
 } CharDescription;
 
 CharDescription mediaCharDescription[] = {
@@ -84,6 +86,7 @@ typedef struct {
 #define REEND32(w) (w)
 #endif
 
+/* Length in words, i.e. uint32_t */
 void SwapBytes16(uint16_t* data, int length) {
     int i;
     for (i = 0; i < length / 2; i++) {
@@ -108,7 +111,7 @@ void ReEndHeader(N64Header* header) {
     header->mediaFormat = REEND32(header->mediaFormat);
 }
 
-char* FindDescriptionFromChar(char ch, CharDescription* charDescription) {
+const char* FindDescriptionFromChar(char ch, CharDescription* charDescription) {
     while (charDescription->ch != '\0') {
         if (ch == charDescription->ch) {
             return charDescription->description;
@@ -118,7 +121,7 @@ char* FindDescriptionFromChar(char ch, CharDescription* charDescription) {
     return NULL;
 }
 
-struct option longOptions[] = {
+const struct option longOptions[] = {
     { "csv", no_argument, NULL, 'c' },
     { "little-endian", no_argument, NULL, 'n' },
     { "print-endian", no_argument, NULL, 'p' },
@@ -137,7 +140,61 @@ typedef enum {
     UNKNOWN_ENDIAN,
 } Endianness;
 
-char* endiannessStrings[] = { "Big", "Little", "Middle", "Unknown" };
+const char* endiannessStrings[] = { "Big", "Little", "Middle", "Unknown" };
+
+#define HEADER_LENGTH (0x1000 - 0x40)
+
+uint32_t ComputeHeaderCRC(FILE* romFile, Endianness endianness) {
+    uint32_t buffer[HEADER_LENGTH / sizeof(uint32_t)];
+    size_t i;
+
+    fseek(romFile, 0x40, SEEK_SET);
+    fread(buffer, HEADER_LENGTH, 1, romFile);
+
+    switch (endianness) {
+        case GOOD_ENDIAN:
+        case UNKNOWN_ENDIAN:
+            break;
+        case BAD_ENDIAN:
+            SwapBytes32((uint32_t*)buffer, HEADER_LENGTH);
+            break;
+        case UGLY_ENDIAN:
+            SwapBytes16((uint16_t*)buffer, HEADER_LENGTH);
+            break;
+    }
+    for (i = 0; i < HEADER_LENGTH / sizeof(uint32_t); i++) {
+        REEND32(buffer[i]);
+    }
+
+    return xcrc32((uint8_t*)buffer, HEADER_LENGTH, 0);
+}
+
+typedef struct {
+    uint32_t crc;
+    const char* ntscName;
+    const char* palName;
+    uint32_t entrypointOffset;
+} CICInfo;
+
+CICInfo cicInfo[] = {
+    { 0x2E0D2A6D, "6102", "7101", 0x000000}, /* Standard */
+    { 0xD8209E1D, "6103", "7103", 0x100000}, /* Banjo Kazooie, DKR, Kirby, Paper Mario, Pokemon Stadium/Snap, Smash, some others */
+    { 0xDD60AE93, "6105", "7105", 0x000000}, /* Zelda, some others */
+    { 0x5F229608, "6106", "7106", 0x200000}, /* Cruisin' World, F-Zero X, Yoshi's Story */
+    { 0xFFECA863, "6101", "7102", 0x000000}, /* Only Star Fox 64 */
+    { 0x00000000, "unknown", "unknown", 0x0000000}
+};
+
+CICInfo* FindCICFromCRC(uint32_t crc) {
+    int i;
+    for (i = 0; cicInfo[i].crc != 0; i++) {
+        if (crc == cicInfo[i].crc) {
+            return &cicInfo[i];
+        }
+    }
+    
+    return &cicInfo[sizeof(cicInfo) / sizeof(cicInfo[0])];
+}
 
 int main(int argc, char** argv) {
     int opt;
@@ -257,6 +314,9 @@ int main(int argc, char** argv) {
 
     ReEndHeader(&header);
     {
+        uint32_t crc;
+        CICInfo* cic;
+        uint32_t entrypoint;
         char imageNameCopy[21] = { 0 };
         char imageNameUTF8[100] = { 0 };
         char* imageName = imageNameCopy;
@@ -286,6 +346,11 @@ int main(int argc, char** argv) {
             iconv_close(conv);
         }
 
+        crc = ComputeHeaderCRC(romFile, endianness);
+        cic = FindCICFromCRC(crc);
+        entrypoint = header.entrypoint - cic->entrypointOffset;
+        
+
         if (!csv) {
             printf("File: %s\n", argv[optind]);
             printf("ROM size: 0x%zX bytes (%zd MB)\n", romSize, romSize >> 20);
@@ -294,7 +359,8 @@ int main(int argc, char** argv) {
             }
             putchar('\n');
 
-            printf("entrypoint:       %08X\n", header.entrypoint);
+            printf("CIC:              %s / %s\n", cic->ntscName, cic->palName);
+            printf("entrypoint:       %08X\n", entrypoint);
             printf("Libultra version: %c\n", header.revision & 0xFF);
             printf("CRC:              %08X %08X\n", header.checksum1, header.checksum2);
             printf("Image name:       \"%s\"\n", imageName);
@@ -315,6 +381,8 @@ int main(int argc, char** argv) {
             }
             putchar(separator);
 
+            printf("%s / %s\n", cic->ntscName, cic->palName);
+            putchar(separator);
             printf("%08X", header.entrypoint);
             putchar(separator);
             printf("%c", header.revision & 0xFF);
