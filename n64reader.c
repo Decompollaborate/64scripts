@@ -86,14 +86,14 @@ typedef struct {
 void SwapBytes16(uint16_t* data, int length) {
     int i;
     for (i = 0; i < length / 2; i++) {
-        data[i] = (data[i] & 0xFF) << 0x8 | (data[i] >> 0x8);
+        data[i] = ((data[i] & 0xFF) << 0x8) | (data[i] >> 0x8);
     }
 }
 
 void SwapBytes32(uint32_t* data, int length) {
     int i;
     for (i = 0; i < length / 4; i++) {
-        data[i] = ((data[i] & 0xFF) << 0x18 | (data[i] & 0xFF00) << 0x8 | (data[i] & 0xFF0000) >> 0x8 | (data[i] >> 0x18));
+        data[i] = ((data[i] & 0xFF) << 0x18) | ((data[i] & 0xFF00) << 0x8) | ((data[i] & 0xFF0000) >> 0x8) | (data[i] >> 0x18);
     }
 }
 
@@ -179,10 +179,10 @@ int main(int argc, char** argv) {
         case GOOD_ENDIAN:
             break;
         case BAD_ENDIAN:
-            SwapBytes32((uint32_t)&header, sizeof(header));
+            SwapBytes32((uint32_t*)&header, sizeof(header));
             break;
         case UGLY_ENDIAN:
-            SwapBytes16((uint32_t)&header, sizeof(header));
+            SwapBytes16((uint16_t*)&header, sizeof(header));
             break;
     }
 
