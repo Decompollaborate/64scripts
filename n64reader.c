@@ -145,7 +145,7 @@ int main(int argc, char** argv) {
 
     while (true) {
         int optionIndex = 0;
-        if ((opt = getopt_long(argc, argv, "cnv", longOptions, &optionIndex)) == EOF) {
+        if ((opt = getopt_long(argc, argv, "cnvh", longOptions, &optionIndex)) == EOF) {
             break;
         }
 
@@ -179,10 +179,10 @@ int main(int argc, char** argv) {
         case GOOD_ENDIAN:
             break;
         case BAD_ENDIAN:
-            SwapBytes32(&header, sizeof(header));
+            SwapBytes32((uint32_t)&header, sizeof(header));
             break;
         case UGLY_ENDIAN:
-            SwapBytes16(&header, sizeof(header));
+            SwapBytes16((uint32_t)&header, sizeof(header));
             break;
     }
 
