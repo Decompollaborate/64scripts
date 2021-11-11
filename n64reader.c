@@ -83,6 +83,20 @@ typedef struct {
 #define REEND32(w) (w)
 #endif
 
+void SwapBytes16(uint16_t* data, int length) {
+    int i;
+    for (i = 0; i < length / 2; i++) {
+        data[i] = (data[i] & 0xFF) << 0x8 | (data[i] >> 0x8);
+    }
+}
+
+void SwapBytes32(uint32_t* data, int length) {
+    int i;
+    for (i = 0; i < length / 4; i++) {
+        data[i] = ((data[i] & 0xFF) << 0x18 | (data[i] & 0xFF00) << 0x8 | (data[i] & 0xFF0000) >> 0x8 | (data[i] >> 0x18));
+    }
+}
+
 void ReEndHeader(N64Header* header) {
     header->clockRate = REEND32(header->clockRate);
     header->entrypoint = REEND32(header->entrypoint);
@@ -104,9 +118,17 @@ char* FindDescriptionFromChar(char ch, CharDescription* charDescription) {
 
 struct option longOptions[] = {
     { "csv", no_argument, NULL, 'c' },
+    { "little-endian", no_argument, NULL, 'n' },
+    { "byteswapped", no_argument, NULL, 'v' },
     { "help", no_argument, NULL, 'h' },
     { 0 },
 };
+
+typedef enum {
+    GOOD_ENDIAN,
+    BAD_ENDIAN,
+    UGLY_ENDIAN,
+} Endianness;
 
 int main(int argc, char** argv) {
     int opt;
@@ -114,6 +136,7 @@ int main(int argc, char** argv) {
     FILE* romFile;
     N64Header header;
     size_t romSize;
+    Endianness endianness;
 
     if (argc < 2) {
         fprintf(stderr, "Please provide an N64 ROM file.\n");
@@ -122,7 +145,7 @@ int main(int argc, char** argv) {
 
     while (true) {
         int optionIndex = 0;
-        if ((opt = getopt_long(argc, argv, "c", longOptions, &optionIndex)) == EOF) {
+        if ((opt = getopt_long(argc, argv, "cnv", longOptions, &optionIndex)) == EOF) {
             break;
         }
 
@@ -130,11 +153,18 @@ int main(int argc, char** argv) {
             case 'c':
                 csv = true;
                 break;
+            case 'n':
+                endianness = BAD_ENDIAN;
+                break;
+            case 'v':
+                endianness = UGLY_ENDIAN;
+                break;
             case 'h':
-                printf("Reads an N64 ROM header and prints the information it contains.\n");
-                printf("Options:\n"
-                       "  -c                     Output in csv format.\n"
-                       "\n");
+                puts("Reads an N64 ROM header and prints the information it contains.");
+                puts("Options:\n"
+                       "  -c, --csv              Output in csv format.\n"
+                       "  -n, --little-endian    Read input as little-endian.\n"
+                       "  -v, --byteswapped      Read input as byteswapped.\n");
                 return 1;
         }
     }
@@ -143,6 +173,18 @@ int main(int argc, char** argv) {
     fread(&header, N64_HEADER_SIZE, 1, romFile);
     fseek(romFile, 0, SEEK_END);
     romSize = ftell(romFile);
+
+
+    switch (endianness) {
+        case GOOD_ENDIAN:
+            break;
+        case BAD_ENDIAN:
+            SwapBytes32(&header, sizeof(header));
+            break;
+        case UGLY_ENDIAN:
+            SwapBytes16(&header, sizeof(header));
+            break;
+    }
 
     ReEndHeader(&header);
     {
