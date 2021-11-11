@@ -119,9 +119,13 @@ char* FindDescriptionFromChar(char ch, CharDescription* charDescription) {
 }
 
 struct option longOptions[] = {
-    { "csv", no_argument, NULL, 'c' },   { "little-endian", no_argument, NULL, 'n' },
-    { "utf-8", no_argument, NULL, 'u' }, { "byteswapped", no_argument, NULL, 'v' },
-    { "help", no_argument, NULL, 'h' },  { 0 },
+    { "csv", no_argument, NULL, 'c' },
+    { "little-endian", no_argument, NULL, 'n' },
+    { "separator", required_argument, NULL, 's' },
+    { "utf-8", no_argument, NULL, 'u' },
+    { "byteswapped", no_argument, NULL, 'v' },
+    { "help", no_argument, NULL, 'h' },
+    { 0 },
 };
 
 typedef enum {
@@ -138,6 +142,7 @@ int main(int argc, char** argv) {
     N64Header header;
     size_t romSize;
     Endianness endianness;
+    char separator = ',';
 
     if (argc < 2) {
         fprintf(stderr, "Please provide an N64 ROM file.\n");
@@ -146,11 +151,15 @@ int main(int argc, char** argv) {
 
     while (true) {
         int optionIndex = 0;
-        if ((opt = getopt_long(argc, argv, "cnuvh", longOptions, &optionIndex)) == EOF) {
+        if ((opt = getopt_long(argc, argv, "s:cnuvh", longOptions, &optionIndex)) == EOF) {
             break;
         }
 
         switch (opt) {
+            case 's':
+                separator = *optarg;
+                break;
+
             case 'c':
                 csv = true;
                 break;
@@ -170,6 +179,8 @@ int main(int argc, char** argv) {
             case 'h':
                 puts("Reads an N64 ROM header and prints the information it contains.");
                 puts("Options:\n"
+                     "  -s, --separator CHAR   Change the separator character used in CSV mode (default: ',')\n"
+                     "\n"
                      "  -c, --csv              Output in csv format.\n"
                      "  -n, --little-endian    Read input as little-endian.\n"
                      "  -u, --utf-8            Convert image name to UTF-8.\n"
@@ -244,16 +255,24 @@ int main(int argc, char** argv) {
             printf("Version mask:     0x%X\n", header.version);
         } else {
 
-            printf("%s,", argv[optind]);
-            printf("0x%zX,", romSize);
-
-            printf("%08X,", header.entrypoint);
-            printf("%c,", header.revision & 0xFF);
-            printf("%08X %08X,", header.checksum1, header.checksum2);
-            printf("\"%s\",", imageName);
-            printf("%c,", header.mediaFormat);
-            printf("%c%c,", header.cartridgeId[0], header.cartridgeId[1]);
-            printf("%c,", header.countryCode);
+            printf("%s", argv[optind]);
+            putchar(separator);
+            printf("0x%zX", romSize);
+            putchar(separator);
+            printf("%08X", header.entrypoint);
+            putchar(separator);
+            printf("%c", header.revision & 0xFF);
+            putchar(separator);
+            printf("%08X %08X", header.checksum1, header.checksum2);
+            putchar(separator);
+            printf("\"%s\"", imageName);
+            putchar(separator);
+            printf("%c", header.mediaFormat);
+            putchar(separator);
+            printf("%c%c", header.cartridgeId[0], header.cartridgeId[1]);
+            putchar(separator);
+            printf("%c", header.countryCode);
+            putchar(separator);
             printf("0x%X\n", header.version);
         }
     }
