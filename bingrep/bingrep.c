@@ -1,12 +1,24 @@
 #include <assert.h>
 #include <ctype.h>
+#include <getopt.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
 
 /* Size of bad character table, needs a value for every character */
-#define ASIZE 0x100
+#define ASIZE (UINT8_MAX + 1)
+
+struct {
+    unsigned int afterContext;
+    unsigned int beforeContext;
+    int maxCount;
+    int width;
+    bool text;
+} gOptions = { 2, 2, -1, 1, false };
+
+int currentCount = 0;
 
 uint8_t DigitFromChar(char ch) {
     switch (ch) {
@@ -56,18 +68,18 @@ uint8_t DigitFromChar(char ch) {
 //     return -1;
 // }
 
-/** 
+/**
  * Converts the hex digits in a string into a preallocated byte array.
- * 
+ *
  * Returns number of bytes written.
  */
-int BytesFromString( uint8_t* byteArray, const char* string) {
-    
+int BytesFromString(uint8_t* byteArray, const char* string) {
+
     if (string != NULL) {
-    int len = 0;
-    int parity = 0;
-    int inIndex;
-    int outIndex = 0;
+        int len = 0;
+        int parity = 0;
+        int inIndex;
+        int outIndex = 0;
 
         for (inIndex = 0; string[inIndex] != '\0'; inIndex++) {
             len++;
@@ -100,45 +112,58 @@ int BytesFromString( uint8_t* byteArray, const char* string) {
 }
 
 #define SETAF_RED "\x1b[31m"
+#define SETAF_LIGHT_RED "\x1b[91m"
 #define SGR0 "\x1b[0m"
-#define MIN(a, b) (((a) < (b) ) ? (a) : (b))
-#define MAX(a, b) (((a) > (b) ) ? (a) : (b))
-
-#define LOOK_FORWARD 2
-#define LOOK_BACKWARD 2
+#define MIN(a, b) (((a) < (b)) ? (a) : (b))
+#define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
 /* Output function */
-void OUTPUT(int j, int m, uint8_t* y, int n) {
-    int k;
+void OUTPUT(unsigned int j, unsigned int m, uint8_t* y, unsigned int n) {
+    unsigned int k;
 
     /* Offset */
     printf("[%06X]:  ", j);
-    for (k = MAX(0, j - LOOK_BACKWARD); k < j; k++) {
-        printf("%02X ", y[k]);
+
+    /* Before context */
+    for (k = MAX(0, (int)(j - gOptions.beforeContext)); k < j; k++) {
+        printf("%02X", y[k]);
+        if ((k + 1) % gOptions.width == 0) {
+            putchar(' ');
+        }
     }
 
     /* Matched string */
-    printf(SETAF_RED);
+    printf(SETAF_LIGHT_RED);
     for (k = j; k < j + m; k++) {
-        printf("%02X ", y[k]);
+        printf("%02X", y[k]);
+        if ((k + 1) % gOptions.width == 0) {
+            putchar(' ');
+        }
     }
     printf(SGR0);
 
-    for (k = j + m; k < MIN(j + m + LOOK_FORWARD, n); k++) {
-        printf("%02X ", y[k]);
+    /* After context */
+    for (k = j + m; k < MIN(j + m + gOptions.afterContext, n); k++) {
+        printf("%02X", y[k]);
+        if ((k + 1) % gOptions.width == 0) {
+            putchar(' ');
+        }
+        if (k + 1 == n) {
+            printf("EOF");
+        }
     }
     putchar('\n');
 }
 
 /**
  * See https://www-igm.univ-mlv.fr/~lecroq/string/node19.html
- * 
+ *
  * x is search string
  * m is length of x
  * qsBc the "bad character table" to generate
  */
-void preQsBc(uint8_t* x, int m, int qsBc[]) {
-    int i;
+void preQsBc(uint8_t* x, unsigned int m, int qsBc[]) {
+    unsigned int i;
 
     for (i = 0; i < ASIZE; ++i) {
         qsBc[i] = m + 1;
@@ -150,15 +175,17 @@ void preQsBc(uint8_t* x, int m, int qsBc[]) {
 
 /**
  * QuickSearch implementation
- * 
+ *
  * x is search string
  * m is length of x
  * y is buffer to search
  * n is length of y
  */
-void QS(uint8_t* x, int m, uint8_t* y, int n) {
-    int j; 
+void QS(uint8_t* x, unsigned int m, uint8_t* y, unsigned int n) {
+    unsigned int j;
     int qsBc[ASIZE];
+
+    currentCount = 0;
 
     /* Preprocessing */
     preQsBc(x, m, qsBc);
@@ -169,22 +196,52 @@ void QS(uint8_t* x, int m, uint8_t* y, int n) {
         // printf("%d: %d\n", j, memcmp(x, y + j, m));
         if (memcmp(x, y + j, m) == 0) {
             OUTPUT(j, m, y, n);
+
+            if (gOptions.maxCount > -1) {
+                currentCount++;
+                if (currentCount >= gOptions.maxCount) {
+                    break;
+                }
+            }
         }
         j += qsBc[y[j + m]]; /* shift */
     }
 }
 
-void BruteForceSearch(uint8_t* x, int m, uint8_t* y, int n) {
-    int j = 0;
+/* The slow but reliable way: check every byte */
+void BruteForceSearch(uint8_t* x, unsigned int m, uint8_t* y, unsigned int n) {
+    unsigned int j = 0;
+
+    currentCount = 0;
+
     while (j <= n - m) {
         if (memcmp(x, y + j, m) == 0) {
             OUTPUT(j, m, y, n);
+            
+            if (gOptions.maxCount > -1) {
+                currentCount++;
+                if (currentCount >= gOptions.maxCount) {
+                    break;
+                }
+            }
         }
-        j++;
+        j += gOptions.width;
     }
 }
 
+struct option longOpts[] = {
+    { "after-context", required_argument, NULL, 'A' },
+    { "before-context", required_argument, NULL, 'B' },
+    { "max-count", required_argument, NULL, 'm' },
+    { "text", no_argument, NULL, 'a' },
+    // Non-grep args:
+    { "help", no_argument, NULL, 'h' },
+    { "width", no_argument, NULL, 'W' },
+    { 0 },
+};
+
 int main(int argc, char** argv) {
+    int opt;
     FILE* inputFile;
     uint8_t* fileBuffer;
     size_t fileLength;
@@ -195,23 +252,93 @@ int main(int argc, char** argv) {
         printf("Usage: %s PATTERN FILE", argv[0]);
     }
 
-    searchLength = strlen(argv[1] + 1 );
+    while (true) {
+        int optionIndex = 0;
+        if ((opt = getopt_long(argc, argv, "A:B:m:W:ah", longOpts, &optionIndex)) == EOF) {
+            break;
+        }
+
+        switch (opt) {
+            case 'A':
+                if (sscanf(optarg, "%d", &gOptions.afterContext) == 0) {
+                    fprintf(stderr, "-A expects a dec number, found %s", optarg);
+                    return 1;
+                }
+                break;
+
+            case 'B':
+                if (sscanf(optarg, "%d", &gOptions.beforeContext) == 0) {
+                    fprintf(stderr, "-B expects a dec number, found %s", optarg);
+                    return 1;
+                }
+                break;
+
+            case 'm':
+                if (sscanf(optarg, "%d", &gOptions.maxCount) == 0) {
+                    fprintf(stderr, "-m expects a dec number, found %s", optarg);
+                    return 1;
+                }
+                break;
+
+            case 'W':
+                if (sscanf(optarg, "%d", &gOptions.width) == 0) {
+                    fprintf(stderr, "-W expects a dec number, found %s", optarg);
+                    return 1;
+                }
+                break;
+
+            case 'a': // Currently doesn't do anything
+                gOptions.text = true;
+                break;
+
+            case 'h': // Not consistent with grep! Will fix when multi
+
+                printf("Usage: %s PATTERN FILE", argv[0]);
+                puts("\"grep, but for binary files\".\n"
+                     "By default searches in a binary file for a given string of bytes and prints the\n"
+                     "address and a small amount of context. Most options are taken from grep.\n"
+                     "\n"
+                     "Positional arguments\n"
+                     "  PATTERN                   pattern of bytes to search for. Currently no wildcards\n"
+                     "  FILE                      file to search for pattern\n"
+                     "\n"
+                     "Options\n"
+                     "  -a, --text                treat string/file as ASCII instead of bytes\n"
+                     "  -m, --max-count=NUM       stop after NUM selected lines\n"
+                     "  -B, --before-context=NUM  print NUM lines of leading context\n"
+                     "  -A, --after-context=NUM   print NUM lines of trailing context\n"
+                     "  -h, --help                print this message and exit\n"
+                     "\n"
+                     "Non-grep options\n"
+                     "  -W, --width=NUM           only look for results whose offset is a multiple of\n"
+                     "                            NUM, e.g. a whole number of words\n"
+                     "\n");
+
+                return 1;
+
+            default:
+                break;
+        }
+    }
+
+    searchLength = strlen(argv[optind] + 1);
     search = malloc(searchLength);
     // memcpy(search, argv[1], searchLength);
-    searchLength = BytesFromString(search, argv[1]);
+    searchLength = BytesFromString(search, argv[optind]);
 
-    if ((inputFile = fopen(argv[2], "rb")) == NULL) {
-        fprintf(stderr,"Failed to open file %s", argv[2]);
+    if ((inputFile = fopen(argv[optind + 1], "rb")) == NULL) {
+        fprintf(stderr, "Failed to open file %s\n", argv[optind + 1]);
+        return 1;
     }
 
-    {
-        int i;
-        printf("%s\n", argv[1]);
-        for (i = 0; i < searchLength; i++) {
-            printf("%02X ", search[i]);
-        }
-        putchar('\n');
-    }
+    // {
+    //     int i;
+    //     printf("%s\n", argv[optind]);
+    //     for (i = 0; i < searchLength; i++) {
+    //         printf("%02X ", search[i]);
+    //     }
+    //     putchar('\n');
+    // }
 
     fseek(inputFile, 0, SEEK_END);
     fileLength = ftell(inputFile);
@@ -219,11 +346,14 @@ int main(int argc, char** argv) {
     fileBuffer = malloc(fileLength);
     fread(fileBuffer, fileLength, 1, inputFile);
 
-    QS(search, searchLength, fileBuffer, fileLength);
-    puts("=======");
-    BruteForceSearch(search, searchLength, fileBuffer, fileLength);
-
-
+    if (gOptions.width > 1) {
+        // fprintf(stderr, "Using BFS\n");
+        /* Use brute force for more complex searches for simplicity. */
+        BruteForceSearch(search, searchLength, fileBuffer, fileLength);
+    } else {
+        // fprintf(stderr, "Using QS\n");
+        QS(search, searchLength, fileBuffer, fileLength);
+    }
 
     fclose(inputFile);
     free(search);
