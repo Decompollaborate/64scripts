@@ -112,10 +112,46 @@ int BytesFromString(uint8_t* byteArray, const char* string) {
 }
 
 #define SETAF_RED "\x1b[31m"
+#define SETAF_LIGHT_BLACK "\x1b[90m"
 #define SETAF_LIGHT_RED "\x1b[91m"
 #define SGR0 "\x1b[0m"
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
+
+typedef void (*bytePrintFunction)(uint8_t);
+typedef void (*spacePrintFunction)(unsigned int);
+
+
+void printChar(uint8_t ch) {
+    if (ch != '\0') {
+        putchar(ch);
+    } else {
+        printf("%s%c%s",SETAF_LIGHT_BLACK, '0', SGR0);
+    }
+    // printf("%c", (ch != '\0' ? ch : ' '));
+}
+
+void printByte(uint8_t ch) {
+    printf("%02X", ch);
+}
+
+void printSpacing(unsigned int k) {
+    if ((k + 1) % gOptions.width == 0) {
+        putchar(' ');
+    }
+}
+
+void printNothing(unsigned int k) {
+    (void)k;
+}
+
+struct {
+    bytePrintFunction bytePrint;
+    spacePrintFunction spacePrint;
+} gPrintInfo = {
+    printByte,
+    printSpacing,
+};
 
 /* Output function */
 void OUTPUT(unsigned int j, unsigned int m, uint8_t* y, unsigned int n) {
@@ -126,33 +162,29 @@ void OUTPUT(unsigned int j, unsigned int m, uint8_t* y, unsigned int n) {
 
     /* Before context */
     for (k = MAX(0, (int)(j - gOptions.beforeContext)); k < j; k++) {
-        printf("%02X", y[k]);
-        if ((k + 1) % gOptions.width == 0) {
-            putchar(' ');
-        }
+        gPrintInfo.bytePrint(y[k]);
+        gPrintInfo.spacePrint(k);
     }
 
     /* Matched string */
-    printf(SETAF_LIGHT_RED);
     for (k = j; k < j + m; k++) {
-        printf("%02X", y[k]);
-        if ((k + 1) % gOptions.width == 0) {
-            putchar(' ');
-        }
-    }
+    printf(SETAF_LIGHT_RED);
+        gPrintInfo.bytePrint(y[k]);
+        gPrintInfo.spacePrint(k);
     printf(SGR0);
+    }
 
     /* After context */
     for (k = j + m; k < MIN(j + m + gOptions.afterContext, n); k++) {
-        printf("%02X", y[k]);
-        if ((k + 1) % gOptions.width == 0) {
-            putchar(' ');
-        }
-        if (k + 1 == n) {
-            printf("EOF");
-        }
+        gPrintInfo.bytePrint(y[k]);
+        gPrintInfo.spacePrint(k);
     }
-    putchar('\n');
+
+    if (k + 1 == n) {
+        puts("EOF");
+    } else {
+        putchar('\n');
+    }
 }
 
 /**
@@ -217,7 +249,7 @@ void BruteForceSearch(uint8_t* x, unsigned int m, uint8_t* y, unsigned int n) {
     while (j <= n - m) {
         if (memcmp(x, y + j, m) == 0) {
             OUTPUT(j, m, y, n);
-            
+
             if (gOptions.maxCount > -1) {
                 currentCount++;
                 if (currentCount >= gOptions.maxCount) {
@@ -321,14 +353,23 @@ int main(int argc, char** argv) {
         }
     }
 
-    searchLength = strlen(argv[optind] + 1);
+    searchLength = strlen(argv[optind]) + 1;
     search = malloc(searchLength);
     // memcpy(search, argv[1], searchLength);
-    searchLength = BytesFromString(search, argv[optind]);
+    if (gOptions.text) {
+        memcpy(search, argv[optind], searchLength);
+    } else {
+        searchLength = BytesFromString(search, argv[optind]);
+    }
 
     if ((inputFile = fopen(argv[optind + 1], "rb")) == NULL) {
         fprintf(stderr, "Failed to open file %s\n", argv[optind + 1]);
         return 1;
+    }
+
+    if (gOptions.text) {
+        gPrintInfo.bytePrint = printChar;
+        gPrintInfo.spacePrint = printNothing;
     }
 
     // {
