@@ -96,7 +96,7 @@ int BytesFromString(uint8_t* byteArray, const char* string) {
         for (inIndex = 0; inIndex < len; inIndex++) {
             if (isxdigit(string[inIndex])) {
                 uint8_t digit = DigitFromChar(string[inIndex]);
-                if (outIndex + parity & 1) {
+                if ((outIndex + parity) & 1) {
                     byteArray[(outIndex + parity) / 2] += digit;
                 } else {
                     byteArray[(outIndex + parity) / 2] = digit << 4;
@@ -121,13 +121,30 @@ int BytesFromString(uint8_t* byteArray, const char* string) {
 typedef void (*bytePrintFunction)(uint8_t);
 typedef void (*spacePrintFunction)(unsigned int);
 
-
 void printChar(uint8_t ch) {
-    if (ch != '\0') {
-        putchar(ch);
-    } else {
-        printf("%s%c%s",SETAF_LIGHT_BLACK, '0', SGR0);
+    switch (ch) {
+        case '\0':
+            printf("%s%c%s", SETAF_LIGHT_BLACK, '0', SGR0);
+            break;
+        case '\n':
+            printf("%s%c%s", SETAF_LIGHT_BLACK, 'n', SGR0);
+            break;
+        case '\r':
+            printf("%s%c%s", SETAF_LIGHT_BLACK, 'r', SGR0);
+            break;
+        case '\t':
+            printf("%s%c%s", SETAF_LIGHT_BLACK, 't', SGR0);
+            break;
+
+        default:
+            putchar(ch);
+            break;
     }
+    // if (ch != '\0') {
+    //     putchar(ch);
+    // } else {
+    //     printf("%s%c%s", SETAF_LIGHT_BLACK, '0', SGR0);
+    // }
     // printf("%c", (ch != '\0' ? ch : ' '));
 }
 
@@ -156,31 +173,44 @@ struct {
 /* Output function */
 void OUTPUT(unsigned int j, unsigned int m, uint8_t* y, unsigned int n) {
     unsigned int k;
+    unsigned int start = MAX(0, (int)(j - gOptions.beforeContext));
+    unsigned int end = MIN(j + m + gOptions.afterContext, n);
 
     /* Offset */
     printf("[%06X]:  ", j);
 
     /* Before context */
-    for (k = MAX(0, (int)(j - gOptions.beforeContext)); k < j; k++) {
-        gPrintInfo.bytePrint(y[k]);
-        gPrintInfo.spacePrint(k);
+    for (k = start; k < end; k++) {
+        if (j <= k && k < j + m) { /* Matched string */
+            printf(SETAF_LIGHT_RED);
+            gPrintInfo.bytePrint(y[k]);
+            gPrintInfo.spacePrint(k);
+            printf(SGR0);
+        } else { /* Context */
+            gPrintInfo.bytePrint(y[k]);
+            gPrintInfo.spacePrint(k);
+        }
     }
+    // /* Before context */
+    // for (k = MAX(0, (int)(j - gOptions.beforeContext)); k < j; k++) {
+    //     gPrintInfo.bytePrint(y[k]);
+    //     gPrintInfo.spacePrint(k);
+    // }
 
-    /* Matched string */
-    for (k = j; k < j + m; k++) {
-    printf(SETAF_LIGHT_RED);
-        gPrintInfo.bytePrint(y[k]);
-        gPrintInfo.spacePrint(k);
-    printf(SGR0);
-    }
+    // /* Matched string */
+    // for (k = j; k < j + m; k++) {
+    // printf(SETAF_LIGHT_RED);
+    //     gPrintInfo.bytePrint(y[k]);
+    //     gPrintInfo.spacePrint(k);
+    // printf(SGR0);
+    // }
 
-    /* After context */
-    for (k = j + m; k < MIN(j + m + gOptions.afterContext, n); k++) {
-        gPrintInfo.bytePrint(y[k]);
-        gPrintInfo.spacePrint(k);
-    }
-
-    if (k + 1 == n) {
+    // /* After context */
+    // for (k = j + m; k < MIN(j + m + gOptions.afterContext, n); k++) {
+    //     gPrintInfo.bytePrint(y[k]);
+    //     gPrintInfo.spacePrint(k);
+    // }
+    if (k >= n) {
         puts("EOF");
     } else {
         putchar('\n');
@@ -353,7 +383,8 @@ int main(int argc, char** argv) {
         }
     }
 
-    searchLength = strlen(argv[optind]) + 1;
+    // This makes the search a char array rather than a string, always, but is needed to avoid using the final '\0'
+    searchLength = strlen(argv[optind]);
     search = malloc(searchLength);
     // memcpy(search, argv[1], searchLength);
     if (gOptions.text) {
