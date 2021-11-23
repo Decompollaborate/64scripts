@@ -122,10 +122,11 @@ const char* FindDescriptionFromChar(char ch, CharDescription* charDescription) {
 }
 
 const struct option longOptions[] = {
+    { "entrypoint", required_argument, NULL, 'e' },
+    { "separator", required_argument, NULL, 's' },
     { "csv", no_argument, NULL, 'c' },
     { "little-endian", no_argument, NULL, 'n' },
     { "print-endian", no_argument, NULL, 'p' },
-    { "separator", required_argument, NULL, 's' },
     { "utf-8", no_argument, NULL, 'u' },
     { "byteswapped", no_argument, NULL, 'v' },
     { "big-endian", no_argument, NULL, 'z' },
@@ -176,14 +177,16 @@ typedef struct {
     uint32_t entrypointOffset;
 } CICInfo;
 
+// clang-format off
 CICInfo cicInfo[] = {
-    { 0x2E0D2A6D, "6102", "7101", 0x000000}, /* Standard */
-    { 0xD8209E1D, "6103", "7103", 0x100000}, /* Banjo Kazooie, DKR, Kirby, Paper Mario, Pokemon Stadium/Snap, Smash, some others */
-    { 0xDD60AE93, "6105", "7105", 0x000000}, /* Zelda, some others */
-    { 0x5F229608, "6106", "7106", 0x200000}, /* Cruisin' World, F-Zero X, Yoshi's Story */
-    { 0xFFECA863, "6101", "7102", 0x000000}, /* Only Star Fox 64 */
-    { 0x00000000, "unknown", "unknown", 0x0000000}
+    { 0x2E0D2A6D, "6102", "7101", 0x000000 }, /* Standard */
+    { 0xD8209E1D, "6103", "7103", 0x100000 }, /* Banjo Kazooie, DKR, Kirby, Paper Mario, Pokemon Stadium/Snap, Smash, some others */
+    { 0xDD60AE93, "6105", "7105", 0x000000 }, /* Zelda, some others */
+    { 0x5F229608, "6106", "7106", 0x200000 }, /* Cruisin' World, F-Zero X, Yoshi's Story */
+    { 0xFFECA863, "6101", "7102", 0x000000 }, /* Only Star Fox 64 */
+    { 0x00000000, "unknown", "unknown", 0x0000000 }
 };
+// clang-format on
 
 CICInfo* FindCICFromCRC(uint32_t crc) {
     int i;
@@ -192,13 +195,19 @@ CICInfo* FindCICFromCRC(uint32_t crc) {
             return &cicInfo[i];
         }
     }
-    
+
     return &cicInfo[sizeof(cicInfo) / sizeof(cicInfo[0])];
 }
 
+typedef enum {
+    OUTPUT_DEFAULT,
+    OUTPUT_CSV,
+    OUTPUT_ASM,
+} OutputFormat;
+
 int main(int argc, char** argv) {
     int opt;
-    bool csv = false;
+    OutputFormat outputFormat = OUTPUT_DEFAULT;
     bool utf8 = false;
     bool endianSpecified = false;
     bool printEndian = false;
@@ -207,6 +216,8 @@ int main(int argc, char** argv) {
     size_t romSize;
     Endianness endianness;
     char separator = ',';
+    char* entrypointString = "";
+    bool useEntrypointString = false;
 
     if (argc < 2) {
         fprintf(stderr, "%s -cu[n|v|z] -s SEP ROMFILE\n", argv[0]);
@@ -216,7 +227,7 @@ int main(int argc, char** argv) {
 
     while (true) {
         int optionIndex = 0;
-        if ((opt = getopt_long(argc, argv, "s:cnpuvzh", longOptions, &optionIndex)) == EOF) {
+        if ((opt = getopt_long(argc, argv, "e:s:acnpuvzh", longOptions, &optionIndex)) == EOF) {
             break;
         }
 
@@ -225,8 +236,17 @@ int main(int argc, char** argv) {
                 separator = *optarg;
                 break;
 
+            case 'a':
+                outputFormat = OUTPUT_ASM;
+                break;
+
             case 'c':
-                csv = true;
+                outputFormat = OUTPUT_CSV;
+                break;
+
+            case 'e':
+                entrypointString = optarg;
+                useEntrypointString = true;
                 break;
 
             case 'n':
@@ -257,7 +277,9 @@ int main(int argc, char** argv) {
                 puts("Reads an N64 ROM header and prints the information it contains.");
                 puts("Options:\n"
                      "  -s, --separator CHAR   Change the separator character used in CSV mode (default: ',')\n"
+                     "  -e, --entrypoint STRING  Use STRING as the entrypoint name instead of raw address.\n"
                      "\n"
+                     "  -a, --asm              Output in asm format.\n"
                      "  -c, --csv              Output in csv format.\n"
                      "  -n, --little-endian    Read input as little-endian.\n"
                      "  -p, --print-endian     Print endianness.\n"
@@ -349,55 +371,119 @@ int main(int argc, char** argv) {
         crc = ComputeHeaderCRC(romFile, endianness);
         cic = FindCICFromCRC(crc);
         entrypoint = header.entrypoint - cic->entrypointOffset;
-        
 
-        if (!csv) {
-            printf("File: %s\n", argv[optind]);
-            printf("ROM size: 0x%zX bytes (%zd MB)\n", romSize, romSize >> 20);
-            if (printEndian) {
-                printf("Endianness: %s\n", endiannessStrings[endianness]);
-            }
-            putchar('\n');
+        switch (outputFormat) {
+            default:
+                printf("File: %s\n", argv[optind]);
+                printf("ROM size: 0x%zX bytes (%zd MB)\n", romSize, romSize >> 20);
+                if (printEndian) {
+                    printf("Endianness: %s\n", endiannessStrings[endianness]);
+                }
+                putchar('\n');
 
-            printf("CIC:              %s / %s\n", cic->ntscName, cic->palName);
-            printf("entrypoint:       %08X\n", entrypoint);
-            printf("Libultra version: %c\n", header.revision & 0xFF);
-            printf("CRC:              %08X %08X\n", header.checksum1, header.checksum2);
-            printf("Image name:       \"%s\"\n", imageName);
-            printf("Media format:     %c: %s\n", header.mediaFormat,
-                   FindDescriptionFromChar(header.mediaFormat, mediaCharDescription));
-            printf("Cartridge Id:     %c%c\n", header.cartridgeId[0], header.cartridgeId[1]);
-            printf("Country code:     %c: %s\n", header.countryCode,
-                   FindDescriptionFromChar(header.countryCode, countryCharDescription));
-            printf("Version mask:     0x%X\n", header.version);
-        } else {
+                printf("CIC:              %s / %s\n", cic->ntscName, cic->palName);
+                printf("entrypoint:       %08X\n", entrypoint);
+                printf("Libultra version: %c\n", header.revision & 0xFF);
+                printf("CRC:              %08X %08X\n", header.checksum1, header.checksum2);
+                printf("Image name:       \"%s\"\n", imageName);
+                printf("Media format:     %c: %s\n", header.mediaFormat,
+                       FindDescriptionFromChar(header.mediaFormat, mediaCharDescription));
+                printf("Cartridge Id:     %c%c\n", header.cartridgeId[0], header.cartridgeId[1]);
+                printf("Country code:     %c: %s\n", header.countryCode,
+                       FindDescriptionFromChar(header.countryCode, countryCharDescription));
+                printf("Version mask:     0x%X\n", header.version);
+                break;
 
-            printf("%s", argv[optind]);
-            putchar(separator);
-            printf("0x%zX", romSize);
-            putchar(separator);
-            if (printEndian) {
-                printf("%s", endiannessStrings[endianness]);
-            }
-            putchar(separator);
+            case OUTPUT_CSV:
+                printf("%s", argv[optind]);
+                putchar(separator);
+                printf("0x%zX", romSize);
+                putchar(separator);
+                if (printEndian) {
+                    printf("%s", endiannessStrings[endianness]);
+                }
+                putchar(separator);
 
-            printf("%s / %s\n", cic->ntscName, cic->palName);
-            putchar(separator);
-            printf("%08X", header.entrypoint);
-            putchar(separator);
-            printf("%c", header.revision & 0xFF);
-            putchar(separator);
-            printf("%08X %08X", header.checksum1, header.checksum2);
-            putchar(separator);
-            printf("\"%s\"", imageName);
-            putchar(separator);
-            printf("%c", header.mediaFormat);
-            putchar(separator);
-            printf("%c%c", header.cartridgeId[0], header.cartridgeId[1]);
-            putchar(separator);
-            printf("%c", header.countryCode);
-            putchar(separator);
-            printf("0x%X\n", header.version);
+                printf("%s / %s\n", cic->ntscName, cic->palName);
+                putchar(separator);
+                printf("%08X", header.entrypoint);
+                putchar(separator);
+                printf("%c", header.revision & 0xFF);
+                putchar(separator);
+                printf("%08X %08X", header.checksum1, header.checksum2);
+                putchar(separator);
+                printf("\"%s\"", imageName);
+                putchar(separator);
+                printf("%c", header.mediaFormat);
+                putchar(separator);
+                printf("%c%c", header.cartridgeId[0], header.cartridgeId[1]);
+                putchar(separator);
+                printf("%c", header.countryCode);
+                putchar(separator);
+                printf("0x%X\n", header.version);
+                break;
+
+            case OUTPUT_ASM:
+                printf(".byte 0x%02X, 0x%02X, 0x%02X, 0x%02X  /* PI BSB Domain 1 register */\n",
+                       header.PIBSDDomain1Register[0], header.PIBSDDomain1Register[1], header.PIBSDDomain1Register[2],
+                       header.PIBSDDomain1Register[3]);
+                printf(".word 0x%08X              /* Clockrate setting */\n", header.clockRate);
+
+                if (useEntrypointString) {
+                    char* entrypointOffsetString;
+                    switch (cic->entrypointOffset) {
+                        case 0x100000:
+                            entrypointOffsetString = " + 0x100000";
+                            break;
+                        case 0x000000:
+                            entrypointOffsetString = "           ";
+                            break;
+                        case 0x200000:
+                            entrypointOffsetString = " + 0x200000";
+                            break;
+                    }
+                    printf(".word %s%s   /* Entrypoint address (0x%08X) */\n", entrypointString,
+                           entrypointOffsetString, header.entrypoint);
+                } else {
+                    printf(".word 0x%08X              /* Entrypoint address */\n", header.entrypoint);                    
+                }
+
+                printf(".byte 0x%02X, 0x%02X, 0x%02X        /* Revision */\n", header.revision >> 0x18,
+                       header.revision >> 0x10 & 0xFF, header.revision >> 8 & 0xFF);
+                printf(".ascii \"%c\"                    /* Libultra version */\n", header.revision & 0xFF);
+                printf(".word 0x%08X              /* Checksum 1 */\n", header.checksum1);
+                printf(".word 0x%08X              /* Checksum 2 */\n", header.checksum2);
+                printf(".word 0x%02X%02X%02X%02X              /* Unknown 1 */\n", header.unk_18[0], header.unk_18[1],
+                       header.unk_18[2], header.unk_18[3]);
+                printf(".word 0x%02X%02X%02X%02X              /* Unknown 2 */\n", header.unk_18[4], header.unk_18[5],
+                       header.unk_18[6], header.unk_18[7]);
+                printf(".ascii \"%s\" /* Internal name */\n", imageName);
+                printf(".word 0x%02X%02X%02X%02X              /* Unknown 3 */\n", header.unk_34[0], header.unk_34[1],
+                       header.unk_34[2], header.unk_34[3]);
+                printf(".byte 0x%02X, 0x%02X, 0x%02X\n", header.mediaFormat >> 0x18, header.mediaFormat >> 0x10 & 0xFF,
+                       header.mediaFormat >> 8 & 0xFF);
+                printf(".ascii \"%c\"                    /* Format (%s) */\n", header.mediaFormat & 0xFF,
+                       FindDescriptionFromChar(header.mediaFormat, mediaCharDescription));
+                printf(".ascii \"%c%c\"                   /* Cartridge ID */\n", header.cartridgeId[0],
+                       header.cartridgeId[1]);
+                printf(".ascii \"%c\"                    /* Country code (%s) */\n", header.countryCode,
+                       FindDescriptionFromChar(header.countryCode, countryCharDescription));
+                printf(".byte 0x%02X                    /* Version */\n", header.version);
+                break;
+                // .word 0x80371240                  /* PI BSB Domain 1 register */
+                //     .word 0x0000000F              /* Clockrate setting */
+                //     .word 0x80000400              /* Entrypoint address */
+                //     .word 0x0000144B              /* Revision */
+                //     .word 0xD3F10E5D              /* Checksum 1 */
+                //     .word 0x052EA579              /* Checksum 2 */
+                //     .word 0x00000000              /* Unknown 1 */
+                //     .word 0x00000000              /* Unknown 2 */
+                //     .ascii "hey you, pikachu    " /* Internal name */
+                //     .word 0x00000000              /* Unknown 3 */
+                //     .word 0x0000004E              /* Cartridge */
+                //     .ascii "PG"                   /* Cartridge ID */
+                //     .ascii "E"                    /* Country code */
+                //     .byte 0x00                    /* Version */
         }
     }
 
