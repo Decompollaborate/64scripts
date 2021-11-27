@@ -12,7 +12,7 @@ OPTFLAGS := -O2
 all: $(PROGRAMS)
 
 clean:
-	$(rm) $(PROGRAMS)
+	$(RM) $(PROGRAMS)
 
 .PHONY: all clean
 
