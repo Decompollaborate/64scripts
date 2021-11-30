@@ -1,21 +1,20 @@
-
-ELF := n64reader.elf
+PROGRAMS := bingrep.elf bytestostr.elf strtobytes.elf
 
 CC       := clang
-INC      := -Icrc32
+INC      :=
 
 WARNINGS := -Wall -Wextra -Wpedantic -Wshadow -Werror=implicit-function-declaration -Wvla -Wno-unused-function
-CFLAGS   := -std=c11
+CFLAGS   := -std=c11 -funsigned-char
 OPTFLAGS := -O2
 
 # Main targets
 
-all: $(ELF)
+all: $(PROGRAMS)
 
 clean:
-	$(RM) $(ELF)
+	$(RM) $(PROGRAMS)
 
 .PHONY: all clean
 
-$(ELF): n64reader.c crc32/crc32.c
+%.elf: %.c
 	$(CC) $(CFLAGS) $(OPTFLAGS) $(WARNINGS) -o $@ $^
