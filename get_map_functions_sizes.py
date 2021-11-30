@@ -34,7 +34,7 @@ def parseMapFile(mapPath: str) -> List[File]:
                 # Find function
                 if entryMatch is not None:
                     funcName = entryMatch["name"]
-                    funcVram = int(entryMatch["vram"], 16) // 4
+                    funcVram = int(entryMatch["vram"], 16)
 
                     # Filter out jump table's labels
                     labelMatch = regex_label.search(funcName)
@@ -75,7 +75,7 @@ def parseMapFile(mapPath: str) -> List[File]:
             func = file.functions[index]
             nextFunc = file.functions[index+1]
 
-            size = nextFunc.vram - func.vram
+            size = (nextFunc.vram - func.vram) // 4
             accummulatedSize += size
 
             file.functions[index] = Function(func.name, func.vram, size)
@@ -148,6 +148,20 @@ def printCsv(filesList: List[File], printVram: bool = True):
         print(f"{name},{funcCount},{maxSize},{size},{averageSize:0.2f}")
     return
 
+def printFunctionsCsv(filesList: List[File]):
+    print("File,Function name,VRAM,Size in words")
+
+    for file in filesList:
+        name = file.name
+        funcCount = len(file.functions)
+
+        if funcCount == 0:
+            continue
+
+        for func in file.functions:
+            print(f"{name},{func.name},{func.vram:08X},{func.size}")
+    return
+
 def main():
     description = "Produces a csv summarizing the files sizes by parsing a map file."
     # TODO
@@ -156,11 +170,8 @@ def main():
 
     parser = argparse.ArgumentParser(description=description, epilog=epilog, formatter_class=argparse.RawTextHelpFormatter)
     parser.add_argument("mapfile", help="Path to a map file.")
-    # parser.add_argument("--non-matching", help="Collect data of the non-matching actors instead.", action="store_true")
-    # parser.add_argument("--function-lines", help="Prints the size of every function instead of a summary.", action="store_true")
-    # parser.add_argument("--ignore", help="Path to a file containing actor's names. The data of actors in this list will be ignored.")
-    # parser.add_argument("--include-only", help="Path to a file containing actor's names. Only data of actors in this list will be printed.")
     parser.add_argument("--same-folder", help="Mix files in the same folder.", action="store_true")
+    parser.add_argument("--functions", help="Prints the size of every function instead of a summary.", action="store_true")
     args = parser.parse_args()
 
     filesList = parseMapFile(args.mapfile)
@@ -168,7 +179,10 @@ def main():
     if args.same_folder:
         filesList = mixFolders(filesList)
 
-    printCsv(filesList, not args.same_folder)
+    if args.functions:
+        printFunctionsCsv(filesList)
+    else:
+        printCsv(filesList, not args.same_folder)
 
 if __name__ == "__main__":
     main()
