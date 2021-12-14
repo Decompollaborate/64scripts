@@ -63,7 +63,7 @@ def parseMapFile(mapPath: str) -> List[File]:
     resultFileList: List[File] = list()
 
     for file in filesList:
-        accummulatedSize = 0
+        acummulatedSize = 0
         funcCount = len(file.functions)
 
         # Filter out files with no functions
@@ -76,13 +76,13 @@ def parseMapFile(mapPath: str) -> List[File]:
             nextFunc = file.functions[index+1]
 
             size = (nextFunc.vram - func.vram) // 4
-            accummulatedSize += size
+            acummulatedSize += size
 
             file.functions[index] = Function(func.name, func.vram, size)
 
         # Calculate size of last function of the file
         func = file.functions[funcCount-1]
-        size = file.size - accummulatedSize
+        size = file.size - acummulatedSize
         file.functions[funcCount-1] = Function(func.name, func.vram, size)
 
         resultFileList.append(file)
