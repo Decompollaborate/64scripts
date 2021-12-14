@@ -145,7 +145,7 @@ def jenkinsMain():
     parser.add_argument("password", help="Your Jenkins password")
     parser.add_argument("--project", help="Select the project to use", default="MM", choices=["MM", "OOT", "Paper Mario", "TMC", "ZAPD"])
     parser.add_argument("--mode", help="""Chooses the mode to run. 
-    `all` runs every mode except the `add-everything` one. 
+    `all` runs the modes `abort`, `master` and `label` in that order.. 
     `abort` aborts every PR in the queue.
     `master` performs a sanity check on the master branch and re-builds it if necessary
     `label` adds every PR to the queue with the label passed with --label.
