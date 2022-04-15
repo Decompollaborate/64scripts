@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <ctype.h>
 #include <getopt.h>
+#include <unistd.h>
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdint.h>
@@ -16,7 +17,8 @@ struct {
     int maxCount;
     int width;
     bool text;
-} gOptions = { 2, 2, -1, 1, false };
+    bool untilZero;
+} gOptions = { 2, 2, -1, 1, false, false };
 
 int currentCount = 0;
 
@@ -111,10 +113,18 @@ int BytesFromString(uint8_t* byteArray, const char* string) {
     return -1;
 }
 
-#define SETAF_RED "\x1b[31m"
-#define SETAF_LIGHT_BLACK "\x1b[90m"
-#define SETAF_LIGHT_RED "\x1b[91m"
-#define SGR0 "\x1b[0m"
+const char* g_setaf_red = "";
+const char* g_setaf_light_black = "";
+const char* g_setaf_light_red = "";
+const char* g_sgr0 = "";
+
+void enableColour() {
+    g_setaf_red = "\x1b[31m";
+    g_setaf_light_black = "\x1b[90m";
+    g_setaf_light_red = "\x1b[91m";
+    g_sgr0 = "\x1b[0m";
+}
+
 #define MIN(a, b) (((a) < (b)) ? (a) : (b))
 #define MAX(a, b) (((a) > (b)) ? (a) : (b))
 
@@ -124,28 +134,26 @@ typedef void (*spacePrintFunction)(unsigned int);
 void printChar(uint8_t ch) {
     switch (ch) {
         case '\0':
-            printf("%s%c%s", SETAF_LIGHT_BLACK, '0', SGR0);
+            printf("%s%c%s", g_setaf_light_black, '0', g_sgr0);
             break;
         case '\n':
-            printf("%s%c%s", SETAF_LIGHT_BLACK, 'n', SGR0);
+            printf("%s%c%s", g_setaf_light_black, 'n', g_sgr0);
             break;
         case '\r':
-            printf("%s%c%s", SETAF_LIGHT_BLACK, 'r', SGR0);
+            printf("%s%c%s", g_setaf_light_black, 'r', g_sgr0);
             break;
         case '\t':
-            printf("%s%c%s", SETAF_LIGHT_BLACK, 't', SGR0);
+            printf("%s%c%s", g_setaf_light_black, 't', g_sgr0);
             break;
 
         default:
-            putchar(ch);
+            if (isprint(ch) != 0) {
+                putchar(ch);
+            } else {
+                printf("%s%c%s", g_setaf_light_black, '.', g_sgr0);
+            }
             break;
     }
-    // if (ch != '\0') {
-    //     putchar(ch);
-    // } else {
-    //     printf("%s%c%s", SETAF_LIGHT_BLACK, '0', SGR0);
-    // }
-    // printf("%c", (ch != '\0' ? ch : ' '));
 }
 
 void printByte(uint8_t ch) {
@@ -181,11 +189,14 @@ void OUTPUT(unsigned int j, unsigned int m, uint8_t* y, unsigned int n) {
 
     /* Before context */
     for (k = start; k < end; k++) {
+        if ((j <= k) && gOptions.text && gOptions.untilZero && (y[k] == '\0')) {
+            break;
+        }
         if (j <= k && k < j + m) { /* Matched string */
-            printf(SETAF_LIGHT_RED);
+            printf("%s", g_setaf_light_red);
             gPrintInfo.bytePrint(y[k]);
             gPrintInfo.spacePrint(k);
-            printf(SGR0);
+            printf("%s", g_sgr0);
         } else { /* Context */
             gPrintInfo.bytePrint(y[k]);
             gPrintInfo.spacePrint(k);
@@ -199,10 +210,10 @@ void OUTPUT(unsigned int j, unsigned int m, uint8_t* y, unsigned int n) {
 
     // /* Matched string */
     // for (k = j; k < j + m; k++) {
-    // printf(SETAF_LIGHT_RED);
+    // printf(g_setaf_light_red);
     //     gPrintInfo.bytePrint(y[k]);
     //     gPrintInfo.spacePrint(k);
-    // printf(SGR0);
+    // printf(g_sgr0);
     // }
 
     // /* After context */
@@ -297,6 +308,7 @@ struct option longOpts[] = {
     { "max-count", required_argument, NULL, 'm' },
     { "text", no_argument, NULL, 'a' },
     // Non-grep args:
+    { "until-zero", no_argument, NULL, 'z' },
     { "help", no_argument, NULL, 'h' },
     { "width", no_argument, NULL, 'W' },
     { 0 },
@@ -310,13 +322,14 @@ int main(int argc, char** argv) {
     uint8_t* search;
     int searchLength;
 
+    /* Parse options */
     if (argc < 3) {
         printf("Usage: %s PATTERN FILE", argv[0]);
     }
 
     while (true) {
         int optionIndex = 0;
-        if ((opt = getopt_long(argc, argv, "A:B:m:W:ah", longOpts, &optionIndex)) == EOF) {
+        if ((opt = getopt_long(argc, argv, "A:B:m:W:ahz", longOpts, &optionIndex)) == EOF) {
             break;
         }
 
@@ -349,8 +362,12 @@ int main(int argc, char** argv) {
                 }
                 break;
 
-            case 'a': // Currently doesn't do anything
+            case 'a':
                 gOptions.text = true;
+                break;
+
+            case 'z':
+                gOptions.untilZero = true;
                 break;
 
             case 'h': // Not consistent with grep! Will fix when multi
@@ -372,6 +389,8 @@ int main(int argc, char** argv) {
                      "  -h, --help                print this message and exit\n"
                      "\n"
                      "Non-grep options\n"
+                     "  -z, --until-zero          print text until next string terminator (\\0),"
+                     "                            requires --text\n"
                      "  -W, --width=NUM           only look for results whose offset is a multiple of\n"
                      "                            NUM, e.g. a whole number of words\n"
                      "\n");
@@ -382,6 +401,14 @@ int main(int argc, char** argv) {
                 break;
         }
     }
+
+    /* Check options */
+    if (gOptions.untilZero && !gOptions.text) {
+        fprintf(stderr, "--until-zero specified without --text\n");
+        return 1;
+    }
+
+    /* Process options and input */
 
     // This makes the search a char array rather than a string, always, but is needed to avoid using the final '\0'
     searchLength = strlen(argv[optind]);
@@ -395,12 +422,18 @@ int main(int argc, char** argv) {
 
     if ((inputFile = fopen(argv[optind + 1], "rb")) == NULL) {
         fprintf(stderr, "Failed to open file %s\n", argv[optind + 1]);
+        free(search);
         return 1;
     }
 
     if (gOptions.text) {
         gPrintInfo.bytePrint = printChar;
         gPrintInfo.spacePrint = printNothing;
+    }
+
+    // If output is piped, do not use colour
+    if (isatty(STDOUT_FILENO)) {
+        enableColour();
     }
 
     // {
