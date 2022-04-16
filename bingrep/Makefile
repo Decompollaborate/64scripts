@@ -5,7 +5,7 @@ INC      :=
 
 WARNINGS := -Wall -Wextra -Wpedantic -Wshadow -Werror=implicit-function-declaration -Wvla -Wno-unused-function
 CFLAGS   := -std=c11 -funsigned-char
-OPTFLAGS := -O2
+OPTFLAGS := -Os -g
 
 # Main targets
 

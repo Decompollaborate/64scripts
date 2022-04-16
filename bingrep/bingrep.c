@@ -22,7 +22,7 @@ struct {
 
 int currentCount = 0;
 
-uint8_t DigitFromChar(char ch) {
+int8_t DigitFromChar(char ch) {
     switch (ch) {
         case '0':
         case '1':
@@ -56,19 +56,6 @@ uint8_t DigitFromChar(char ch) {
             return -1;
     }
 }
-
-// uint8_t DigitFromChar(char ch) {
-//     if ('0' <= ch <= '9') {
-//         return ch - '0';
-//     }
-//     if ('A' <= ch <= 'F') {
-//         return ch - 'A' + 0xA;
-//     }
-//     if ('a' <= ch <= 'f') {
-//         return ch - 'a' + 0xA;
-//     }
-//     return -1;
-// }
 
 /**
  * Converts the hex digits in a string into a preallocated byte array.
