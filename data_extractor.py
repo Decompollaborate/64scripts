@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 
 import argparse
-from struct import *;
+import struct
 
 def main():
-    description = "Extract an array of data from a binary file using a specified format."
+    description = "Extract an array of data from a binary file using a specified format.";
 
     parser = argparse.ArgumentParser(description=description, formatter_class=argparse.RawTextHelpFormatter);
     parser.add_argument("file", help="Binary file to extract from");
@@ -18,7 +18,7 @@ def main():
     format = args.format;
     count = int(args.count);
 
-    size = calcsize(format);
+    size = struct.calcsize(format);
 
     f = open(file, "rb");
 
@@ -27,7 +27,7 @@ def main():
     i = 0;
     while (i < count):
         stuff = f.read(size);
-        row = unpack(format, stuff);
+        row = struct.unpack(format, stuff);
         print("{ ", end="");
         print(*map(hex, row), sep=", ", end=" },\n");
         i += 1;

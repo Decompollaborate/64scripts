@@ -45,6 +45,7 @@ CharDescription countryCharDescription[] = {
     { 'W', "Scandinavian" },
     { 'X', "European" },
     { 'Y', "European" },
+    { 0, "iQue roms have zeros here" },
     { 0 },
 };
 
@@ -145,6 +146,7 @@ const char* endiannessStrings[] = { "Big", "Little", "Middle", "Unknown" };
 
 #define HEADER_LENGTH (0x1000 - 0x40)
 
+/* Computes the crc32 of the IPL3 to determine which CIC is used. */
 uint32_t ComputeHeaderCRC(FILE* romFile, Endianness endianness) {
     uint32_t buffer[HEADER_LENGTH / sizeof(uint32_t)];
     size_t i;
@@ -442,10 +444,10 @@ int main(int argc, char** argv) {
                             entrypointOffsetString = " + 0x200000";
                             break;
                     }
-                    printf(".word %s%s   /* Entrypoint address (0x%08X) */\n", entrypointString,
-                           entrypointOffsetString, header.entrypoint);
+                    printf(".word %s%s   /* Entrypoint address (0x%08X) */\n", entrypointString, entrypointOffsetString,
+                           header.entrypoint);
                 } else {
-                    printf(".word 0x%08X              /* Entrypoint address */\n", header.entrypoint);                    
+                    printf(".word 0x%08X              /* Entrypoint address */\n", header.entrypoint);
                 }
 
                 printf(".byte 0x%02X, 0x%02X, 0x%02X        /* Revision */\n", header.revision >> 0x18,
