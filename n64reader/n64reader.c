@@ -8,7 +8,10 @@
 
 #include "crc32/crc32.h"
 
+#define ARRAY_COUNT(arr) (sizeof(arr) / sizeof(arr[0]))
+
 #define N64_HEADER_SIZE 0x40
+
 
 typedef struct {
     const char ch;
@@ -198,7 +201,7 @@ CICInfo* FindCICFromCRC(uint32_t crc) {
         }
     }
 
-    return &cicInfo[sizeof(cicInfo) / sizeof(cicInfo[0])];
+    return &cicInfo[ARRAY_COUNT(cicInfo) - 1];
 }
 
 typedef enum {
@@ -383,17 +386,18 @@ int main(int argc, char** argv) {
                 }
                 putchar('\n');
 
-                printf("CIC:              %s / %s\n", cic->ntscName, cic->palName);
-                printf("entrypoint:       %08X\n", entrypoint);
-                printf("Libultra version: %c\n", header.revision & 0xFF);
-                printf("CRC:              %08X %08X\n", header.checksum1, header.checksum2);
-                printf("Image name:       \"%s\"\n", imageName);
-                printf("Media format:     %c: %s\n", header.mediaFormat,
+                printf("CIC:               %s / %s\n", cic->ntscName, cic->palName);
+                printf("header entrypoint: %08X\n", header.entrypoint);
+                printf("true entrypoint:   %08X\n", entrypoint);
+                printf("Libultra version:  %c\n", header.revision & 0xFF);
+                printf("CRC:               %08X %08X\n", header.checksum1, header.checksum2);
+                printf("Image name:        \"%s\"\n", imageName);
+                printf("Media format:      %c: %s\n", header.mediaFormat,
                        FindDescriptionFromChar(header.mediaFormat, mediaCharDescription));
-                printf("Cartridge Id:     %c%c\n", header.cartridgeId[0], header.cartridgeId[1]);
-                printf("Country code:     %c: %s\n", header.countryCode,
+                printf("Cartridge Id:      %c%c\n", header.cartridgeId[0], header.cartridgeId[1]);
+                printf("Country code:      %c: %s\n", header.countryCode,
                        FindDescriptionFromChar(header.countryCode, countryCharDescription));
-                printf("Version mask:     0x%X\n", header.version);
+                printf("Version mask:      0x%X\n", header.version);
                 break;
 
             case OUTPUT_CSV:
@@ -403,12 +407,14 @@ int main(int argc, char** argv) {
                 putchar(separator);
                 if (printEndian) {
                     printf("%s", endiannessStrings[endianness]);
+					putchar(separator);
                 }
-                putchar(separator);
 
-                printf("%s / %s\n", cic->ntscName, cic->palName);
+                printf("%s / %s", cic->ntscName, cic->palName);
                 putchar(separator);
                 printf("%08X", header.entrypoint);
+                putchar(separator);
+                printf("%08X", entrypoint);
                 putchar(separator);
                 printf("%c", header.revision & 0xFF);
                 putchar(separator);
