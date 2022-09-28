@@ -14,10 +14,10 @@ regex_label = re.compile(r"^(?P<name>L[0-9A-F]{8})$")
 File = collections.namedtuple("File", ["name", "vram", "size", "functions"])
 Function = collections.namedtuple("Function", ["name", "vram", "size"])
 
-def parseMapFile(mapPath: str) -> List[File]:
+def parseMapFile(mapPath: str, startingPoint: str) -> List[File]:
     with open(mapPath) as f:
         mapData = f.read()
-        startIndex = mapData.find("..makerom")
+        startIndex = mapData.find(startingPoint)
         mapData = mapData[startIndex:]
     # print(len(mapData))
 
@@ -172,9 +172,10 @@ def main():
     parser.add_argument("mapfile", help="Path to a map file.")
     parser.add_argument("--same-folder", help="Mix files in the same folder.", action="store_true")
     parser.add_argument("--functions", help="Prints the size of every function instead of a summary.", action="store_true")
+    parser.add_argument("--starting-point", default="\n build/")
     args = parser.parse_args()
 
-    filesList = parseMapFile(args.mapfile)
+    filesList = parseMapFile(args.mapfile, args.starting_point)
 
     if args.same_folder:
         filesList = mixFolders(filesList)
