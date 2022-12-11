@@ -16,9 +16,11 @@ struct {
     unsigned int beforeContext;
     int maxCount;
     int width;
+    size_t start;
+    size_t length;
     bool text;
     bool untilZero;
-} gOptions = { 2, 2, -1, 1, false, false };
+} gOptions = { 2, 2, -1, 1, 0, 0, false, false };
 
 int currentCount = 0;
 
@@ -172,7 +174,7 @@ void OUTPUT(unsigned int j, unsigned int m, uint8_t* y, unsigned int n) {
     unsigned int end = MIN(j + m + gOptions.afterContext, n);
 
     /* Offset */
-    printf("[%06X]:  ", j);
+    printf("[%06lX]:  ", gOptions.start + j);
 
     /* Before context */
     for (k = start; k < end; k++) {
@@ -241,7 +243,7 @@ void preQsBc(uint8_t* x, unsigned int m, int qsBc[]) {
  * y is buffer to search
  * n is length of y
  */
-void QS(uint8_t* x, unsigned int m, uint8_t* y, unsigned int n) {
+unsigned int QS(uint8_t* x, unsigned int m, uint8_t* y, unsigned int n) {
     unsigned int j;
     int qsBc[ASIZE];
 
@@ -266,10 +268,11 @@ void QS(uint8_t* x, unsigned int m, uint8_t* y, unsigned int n) {
         }
         j += qsBc[y[j + m]]; /* shift */
     }
+    return currentCount;
 }
 
 /* The slow but reliable way: check every byte */
-void BruteForceSearch(uint8_t* x, unsigned int m, uint8_t* y, unsigned int n) {
+unsigned int BruteForceSearch(uint8_t* x, unsigned int m, uint8_t* y, unsigned int n) {
     unsigned int j = 0;
 
     currentCount = 0;
@@ -287,12 +290,15 @@ void BruteForceSearch(uint8_t* x, unsigned int m, uint8_t* y, unsigned int n) {
         }
         j += gOptions.width;
     }
+    return currentCount;
 }
 
 struct option longOpts[] = {
     { "after-context", required_argument, NULL, 'A' },
     { "before-context", required_argument, NULL, 'B' },
     { "max-count", required_argument, NULL, 'm' },
+    { "start", required_argument, NULL, 'S' },
+    { "length", required_argument, NULL, 'N' },
     { "text", no_argument, NULL, 'a' },
     // Non-grep args:
     { "until-zero", no_argument, NULL, 'z' },
@@ -305,9 +311,9 @@ int main(int argc, char** argv) {
     int opt;
     FILE* inputFile;
     uint8_t* fileBuffer;
-    size_t fileLength;
     uint8_t* search;
     int searchLength;
+    unsigned int foundCount = 0;
 
     /* Parse options */
     if (argc < 3) {
@@ -316,7 +322,7 @@ int main(int argc, char** argv) {
 
     while (true) {
         int optionIndex = 0;
-        if ((opt = getopt_long(argc, argv, "A:B:m:W:ahz", longOpts, &optionIndex)) == EOF) {
+        if ((opt = getopt_long(argc, argv, "A:B:m:W:S:N:ahz", longOpts, &optionIndex)) == -1) {
             break;
         }
 
@@ -349,6 +355,20 @@ int main(int argc, char** argv) {
                 }
                 break;
 
+            case 'S':
+                if (sscanf(optarg, "%zX", &gOptions.start) == 0) {
+                    fprintf(stderr, "-W expects a dec number, found %s", optarg);
+                    return 1;
+                }
+                break;
+
+            case 'N':
+                if (sscanf(optarg, "%zX", &gOptions.length) == 0) {
+                    fprintf(stderr, "-W expects a dec number, found %s", optarg);
+                    return 1;
+                }
+                break;
+
             case 'a':
                 gOptions.text = true;
                 break;
@@ -376,6 +396,8 @@ int main(int argc, char** argv) {
                      "  -h, --help                print this message and exit\n"
                      "\n"
                      "Non-grep options\n"
+                     "  -S, --start=HEX           offset at which to start searching\n"
+                     "  -N, --length=HEX          number of bytes to read\n"
                      "  -z, --until-zero          print text until next string terminator (\\0),"
                      "                            requires --text\n"
                      "  -W, --width=NUM           only look for results whose offset is a multiple of\n"
@@ -432,23 +454,31 @@ int main(int argc, char** argv) {
     //     putchar('\n');
     // }
 
-    fseek(inputFile, 0, SEEK_END);
-    fileLength = ftell(inputFile);
-    fseek(inputFile, 0, SEEK_SET);
-    fileBuffer = malloc(fileLength);
-    fread(fileBuffer, fileLength, 1, inputFile);
+    if (gOptions.length == 0) {
+        fseek(inputFile, 0, SEEK_END);
+        gOptions.length = ftell(inputFile);
+    }
+    fseek(inputFile, gOptions.start, SEEK_SET);
+    fileBuffer = malloc(gOptions.length);
+    fread(fileBuffer, gOptions.length, 1, inputFile);
 
     if (gOptions.width > 1) {
         // fprintf(stderr, "Using BFS\n");
         /* Use brute force for more complex searches for simplicity. */
-        BruteForceSearch(search, searchLength, fileBuffer, fileLength);
+        foundCount = BruteForceSearch(search, searchLength, fileBuffer, gOptions.length);
     } else {
         // fprintf(stderr, "Using QS\n");
-        QS(search, searchLength, fileBuffer, fileLength);
+        foundCount = QS(search, searchLength, fileBuffer, gOptions.length);
     }
 
     fclose(inputFile);
     free(search);
     free(fileBuffer);
-    return 0;
+
+    // Ideally we'd return the found count, but this is more compliant with shell conventions
+    if (foundCount > 0) {
+        return 0;
+    } else {
+        return 1;
+    }
 }
